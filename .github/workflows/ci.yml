@@ -1,0 +1,171 @@
+# GitHub Actions CI for a standalone Magento 2 module.
+#
+# Runs on every push and pull request to main.
+# Does NOT require Magento repo credentials for the static analysis jobs.
+# Unit tests are disabled by default — see the "unit-tests" job below for
+# instructions on enabling them with Magento repo auth.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Static Analysis ─────────────────────────────────────────────────────────
+  # Installs only open-source QA tools (no Magento repo credentials needed).
+  static-analysis:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: intl, zip, bcmath, soap
+          tools: composer:v2
+          coverage: none
+
+      # Validate the module's own composer.json (no install needed).
+      - name: Validate composer.json
+        run: composer validate --no-check-publish
+
+      # Install QA tools in an isolated directory so we don't try to resolve
+      # magento/framework (which requires repo.magento.com credentials).
+      - name: Install QA tools
+        run: |
+          mkdir -p /tmp/qa-tools
+          cat > /tmp/qa-tools/composer.json << 'EOF'
+          {
+            "require": {
+              "magento/magento-coding-standard": ">=28",
+              "phpmd/phpmd": "^2.15"
+            },
+            "config": {
+              "allow-plugins": {
+                "dealerdirect/phpcodesniffer-composer-installer": true
+              }
+            }
+          }
+          EOF
+          composer install \
+            --working-dir=/tmp/qa-tools \
+            --no-progress \
+            --prefer-dist \
+            --no-interaction
+
+      - name: PHP CodeSniffer (Magento2 standard)
+        run: |
+          /tmp/qa-tools/vendor/bin/phpcs \
+            --standard=Magento2 \
+            --extensions=php \
+            --ignore=vendor/ \
+            --runtime-set ignore_warnings_on_exit 1 \
+            .
+
+      - name: Storefront JS specs (Jasmine)
+        # Runs only when the module ships Test/Js/ with a Jasmine runner beside it. Unlike the PHP
+        # steps this needs no Magento credentials — the specs stub the framework — so it is safe in
+        # a public-runner build.
+        #
+        # A module whose specs compare it against a sibling module (the Breeze twins) reports
+        # those specs as *pending* here, because the sibling is not in this checkout. Pending is
+        # deliberate: a silent zero-spec run would look identical to a pass. The comparison is
+        # enforced before publish instead, by the Muon workspace's pre-publish gate — that gate
+        # lives in the toolchain repo, not in this one, and runs where both modules are still
+        # side by side.
+        run: |
+          if [ -f Test/Js/package.json ]; then
+            cd Test/Js
+            npm install --no-audit --no-fund
+            npx jasmine --config=jasmine.json
+          else
+            echo "No Test/Js/package.json — skipping."
+          fi
+
+      - name: Storefront JS specs (node:test)
+        # The other JS suite shape: plain node:test files with no runner, no package.json and no
+        # npm install — they stub the framework and use node's own test runner. A module can ship
+        # either shape; the two steps are independent and each no-ops when its shape is absent.
+        #
+        # Name the files, never the directory. On Node 20+ a directory argument is resolved as a
+        # module and the run dies with MODULE_NOT_FOUND before a single test executes — which
+        # exits non-zero, so it fails loudly rather than passing empty.
+        #
+        # A spec that compares this module against a sibling (the Breeze twins) reports as
+        # *skipped* here, with its reason, because the sibling is not in this checkout. Same
+        # bargain as the Jasmine step above: the pre-publish gate in the Muon workspace runs it
+        # where both modules are still side by side. That gate is not part of this repository.
+        run: |
+          specs=$(ls Test/Js/*.test.mjs 2>/dev/null || true)
+          if [ -n "$specs" ]; then
+            node --test $specs
+          else
+            echo "No Test/Js/*.test.mjs — skipping."
+          fi
+
+      - name: PHPMD
+        run: |
+          # Test/ is excluded deliberately: PHPMD's MissingImport and CouplingBetweenObjects
+          # rules fire constantly on legitimate test code (inline \DateTimeImmutable, wide
+          # collaborator mocking) and would fail the build for zero production defects.
+          /tmp/qa-tools/vendor/bin/phpmd . ansi \
+            phpmd.xml \
+            --exclude vendor/,Test/
+
+  # ── Unit Tests ──────────────────────────────────────────────────────────────
+  # Disabled by default because Magento framework classes are required at
+  # runtime and magento/framework lives behind repo.magento.com authentication.
+  #
+  # To enable:
+  #   1. Add two GitHub Actions secrets holding your repo.magento.com keys —
+  #      MAGENTO_COMPOSER_AUTH_USER (public key) and
+  #      MAGENTO_COMPOSER_AUTH_PASS (private key). The step below passes them to
+  #      `composer config http-basic.repo.magento.com`.
+  #   2. Uncomment the job below.
+  #   3. Add require-dev to the module's composer.json:
+  #        "require-dev": {
+  #            "magento/magento2-base": "^2.4",
+  #            "phpunit/phpunit": "^10.5"
+  #        }
+  #
+  # unit-tests:
+  #   name: Unit Tests
+  #   runs-on: ubuntu-latest
+  #   needs: static-analysis
+  #
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Set up PHP 8.3
+  #       uses: shivammathur/setup-php@v2
+  #       with:
+  #         php-version: '8.3'
+  #         extensions: intl, zip, bcmath, soap
+  #         tools: composer:v2
+  #         coverage: none
+  #
+  #     - name: Configure Magento repo credentials
+  #       run: composer config -g http-basic.repo.magento.com \
+  #              "${{ secrets.MAGENTO_COMPOSER_AUTH_USER }}" \
+  #              "${{ secrets.MAGENTO_COMPOSER_AUTH_PASS }}"
+  #
+  #     - name: Install dependencies
+  #       run: composer install --no-progress --prefer-dist --no-interaction
+  #
+  #     - name: Run unit tests
+  #       run: vendor/bin/phpunit --testsuite unit

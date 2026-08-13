@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<!--
+    Frontend scope. Being an event rather than a plugin is the point: this is wired only in the
+    storefront area and instantiated after bootstrap, so building the observer's dependency graph
+    cannot force code generation inside App\Http's ___callPlugins(). See Observer\FinalizeRun.
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <event name="controller_front_send_response_before">
+        <observer name="muon_devprofiler_finalize_run"
+                  instance="Muon\DevProfiler\Observer\FinalizeRun"/>
+    </event>
+</config>
