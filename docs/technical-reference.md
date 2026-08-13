@@ -1,6 +1,6 @@
 # Muon_DevProfiler — Technical Reference
 
-Module: `Muon_DevProfiler` · Package `muon/module-dev-profiler` 1.0.0 · OSL-3.0
+Module: `Muon_DevProfiler` · Package `muon/module-dev-profiler` 1.1.1 · OSL-3.0
 Requires PHP `~8.3.0 || ~8.4.0 || ~8.5.0`, Magento 2.4.9.
 
 ## Architecture
@@ -19,7 +19,7 @@ graph TD
         TH[TemplateHints<br/>afterCreate on TemplateEngineFactory]
     end
     subgraph Finalize["Finalize — response in hand"]
-        RW[RunWriter<br/>App\Http]
+        RW[FinalizeRun observer<br/>controller_front_send_response_before]
         SRW[StaticResourceWriter<br/>App\StaticResource]
         RF[RunFinalizer]
     end
@@ -129,7 +129,12 @@ Paths are relative to the Magento root. Keys: `schema`, `token`, `captured_at`,
 `request{method,url,full_action,status,is_ajax,kind,duration_ms,memory_peak_kb}`,
 `context{store_code,store_id,website_id,theme_path,theme_source}`,
 `layout{generated,cacheable,handles,uncacheable_blocks[],constructor_optouts[]}`,
-`fallback[]`, `truncated{fallback}`.
+`fallback[]`, `queries[]`, `truncated{fallback,queries}`.
+
+`queries[]` carries one entry per distinct statement shape, not per execution:
+`{fingerprint,sample,count,total_ms,max_ms,binds,origin,is_userland,sql_varies}`. `sql_varies`
+records whether the statement TEXT changed between executions — the fingerprint normalises
+inlined literals away, so without it distinct reads and a repeated one are indistinguishable.
 
 `kind` is `page` or `static` and drives the `n/a` verdict. `full_action` is `null` for requests
 that never routed. `theme_source` records how the theme was learned — `observed` (the request used

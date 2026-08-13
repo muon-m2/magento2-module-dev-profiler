@@ -84,10 +84,19 @@ class RunRendererTest extends TestCase
     {
         $renderer = $this->renderer([$this->entry('tokens.less'), $this->entry('tokens.less')]);
 
-        $out = implode("\n", $renderer->render($this->profileRun()));
+        // Both numbers in the header have to come from a run that could actually have happened:
+        // `distinct` is counted from the resolver's output and `lookups` from what was recorded,
+        // so a fixture with two classified entries and one recorded lookup tests nothing — the two
+        // halves never meet. Two recorded lookups of one file is the case being described.
+        $out = implode("\n", $renderer->render($this->profileRun([
+            'fallback' => [
+                ['type' => 'static', 'file' => 'tokens.less'],
+                ['type' => 'static', 'file' => 'tokens.less'],
+            ],
+        ])));
 
         self::assertSame(1, substr_count($out, 'tokens.less   x2'), 'one row carrying x2');
-        self::assertStringContainsString('1 distinct files (1 lookups)', $out);
+        self::assertStringContainsString('1 distinct files (2 lookups)', $out);
     }
 
     /**
