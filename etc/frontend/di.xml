@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+
+    <!--
+        Everything here wraps an object built during dispatch, after area configuration has loaded —
+        so these are scoped to the storefront and cost the admin and web-API areas precisely
+        nothing, not even a disabled check.
+    -->
+
+    <type name="Magento\Framework\View\Design\FileResolution\Fallback\ResolverInterface">
+        <plugin name="muon_devprofiler_fallback"
+                type="Muon\DevProfiler\Plugin\View\FallbackRecorder"
+                sortOrder="10"/>
+    </type>
+
+    <type name="Magento\Framework\View\Layout">
+        <plugin name="muon_devprofiler_layout_verdict"
+                type="Muon\DevProfiler\Plugin\View\LayoutVerdict"
+                sortOrder="10"/>
+    </type>
+
+    <type name="Magento\Framework\View\LayoutFactory">
+        <plugin name="muon_devprofiler_layout_optout"
+                type="Muon\DevProfiler\Plugin\View\LayoutOptOut"
+                sortOrder="10"/>
+    </type>
+
+    <type name="Magento\Framework\View\TemplateEngineFactory">
+        <plugin name="muon_devprofiler_template_hints"
+                type="Muon\DevProfiler\Plugin\View\TemplateHints"
+                sortOrder="100"/>
+    </type>
+</config>
