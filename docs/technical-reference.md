@@ -1,6 +1,6 @@
 # Muon_DevProfiler — Technical Reference
 
-Module: `Muon_DevProfiler` · Package `muon/module-dev-profiler` 1.1.1 · OSL-3.0
+Module: `Muon_DevProfiler` · Package `muon/module-dev-profiler` 1.2.0 · OSL-3.0
 Requires PHP `~8.3.0 || ~8.4.0 || ~8.5.0`, Magento 2.4.9.
 
 ## Architecture
@@ -122,6 +122,21 @@ merged XML contains `cacheable="false"` declarations that never produced an elem
 those would contradict the verdict printed beside them. When nothing accounts for it, the output
 says **cause unknown** rather than inventing one.
 
+## Reading the ring
+
+| Method | Cost | Used by |
+|---|---|---|
+| `RunStore::load()` / `loadLast()` / `loadLastDocument()` | decodes one file | CLI, board |
+| `RunStore::list(int $limit)` | decodes up to `$limit` files | CLI, board ledger |
+| `RunStore::count()` | **counts files without decoding any** | a caller that needs only the number |
+
+`count()` exists so a status line does not pay to unserialize fifty documents to print one integer.
+
+`Model\Analysis\ResolutionSet` holds the fallback list's two presentation rules — collapse repeat
+lookups of the same file into one row carrying a count, then rank shadowed entries first. They were
+private to `FallbackListRenderer` until a second read surface needed them; a second copy would have
+been a second answer, and the two surfaces would have disagreed about how many files were shadowed.
+
 ## Stored document
 
 `var/muon/profiler/<unixms>-<token>.json`, `schema: 1`. Only recorded facts; nothing derived.
@@ -143,7 +158,36 @@ cache hit, and is reported as the weaker claim it is).
 
 ## Configuration
 
-None. The only tunable is `ringSize` (default 50), a `di.xml` constructor argument on `RunStore`.
+None in `system.xml`. Two `di.xml` constructor arguments:
+
+| Argument | Type | On | Default | Purpose |
+|---|---|---|---|---|
+| `ringSize` | int | `Model\Store\RunStore` | 50 | How many runs to keep |
+| `excludedActions` | array | `Model\Run\RunFinalizer` | `[]` | Full action names whose runs are never recorded |
+
+`excludedActions` is how a companion module keeps its **own** requests out of the ring. A module
+that reads runs over HTTP — a web board — is itself a frontend request, so its collectors run and
+its run is written like any other; a board that polls for new runs would evict the runs being
+inspected within seconds. Consumers contribute their action names from their own `di.xml`:
+
+```xml
+<type name="Muon\DevProfiler\Model\Run\RunFinalizer">
+    <arguments>
+        <argument name="excludedActions" xsi:type="array">
+            <item name="board_index" xsi:type="string">muon_profiler_index_index</item>
+        </argument>
+    </arguments>
+</type>
+```
+
+**An argument, not a plugin — this is load-bearing.** Intercepting `RunFinalizer` (or `Gate`, or
+`RunStore`) makes the object manager generate an interceptor inside `___callPlugins()`, which is the
+documented cause of the `Undefined array key "Magento\Framework\App\Http"` failure in 1.0.0. With
+DI compiled the interceptor already exists and the bug is invisible, so it survives review; clearing
+`generated/` is routine in development, and this is a development tool.
+
+Requests that never routed report no action name, so a static-asset run cannot be excluded by
+accident. The comparison is strict: an empty string in the list matches nothing.
 
 There is deliberately **no** `allow_production` toggle. Activation is
 `State::getMode() === MODE_DEVELOPER` evaluated in code with no override path — a switch that

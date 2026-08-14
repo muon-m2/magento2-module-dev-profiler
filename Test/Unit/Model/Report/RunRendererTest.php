@@ -9,6 +9,7 @@ declare(strict_types=1);
 namespace Muon\DevProfiler\Test\Unit\Model\Report;
 
 use Muon\DevProfiler\Model\Analysis\CacheVerdict;
+use Muon\DevProfiler\Model\Analysis\ResolutionSet;
 use Muon\DevProfiler\Model\Analysis\ShadowResolver;
 use Muon\DevProfiler\Model\Analysis\QueryAnalyzer;
 use Muon\DevProfiler\Model\Report\FallbackListRenderer;
@@ -34,7 +35,7 @@ class RunRendererTest extends TestCase
         $shadows->method('classify')->willReturn($classified);
 
         return new RunRenderer(
-            new FallbackListRenderer($shadows),
+            new FallbackListRenderer($shadows, new ResolutionSet()),
             new SqlListRenderer(new QueryAnalyzer()),
             new CacheVerdict()
         );

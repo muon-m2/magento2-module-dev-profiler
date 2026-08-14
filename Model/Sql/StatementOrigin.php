@@ -28,7 +28,13 @@ class StatementOrigin
      * Path fragments that are never the answer.
      */
     private const SKIP = [
+        // Both layouts of this module's own code. The first is app/code; the second is the
+        // Composer install, which is how it is actually deployed — and naming only the first made
+        // the skip silently stop working the moment the module moved to vendor/. Every statement
+        // then reported its origin as this module's own QueryLogger: true, and useless, which is
+        // the exact failure the Zend DB entry below was already added to fix.
         '/Muon/DevProfiler/',
+        '/muon/module-dev-profiler/',
         '/generated/code/',
         '/framework/DB/',
         // Magento's bundled Zend DB does not live under framework/DB, so a skip list that only

@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 namespace Muon\DevProfiler\Model\Report;
 
+use Muon\DevProfiler\Model\Analysis\ResolutionSet;
 use Muon\DevProfiler\Model\Analysis\ShadowResolver;
 
 /**
@@ -21,9 +22,11 @@ class FallbackListRenderer
 {
     /**
      * @param \Muon\DevProfiler\Model\Analysis\ShadowResolver $shadows
+     * @param \Muon\DevProfiler\Model\Analysis\ResolutionSet $resolutions
      */
     public function __construct(
-        private readonly ShadowResolver $shadows
+        private readonly ShadowResolver $shadows,
+        private readonly ResolutionSet $resolutions
     ) {
     }
 
@@ -67,8 +70,8 @@ class FallbackListRenderer
             return $lines;
         }
 
-        $classified = $this->rank(
-            $this->collapse($this->shadows->classify($recorded, (string)($context['theme_path'] ?? '')))
+        $classified = $this->resolutions->present(
+            $this->shadows->classify($recorded, (string)($context['theme_path'] ?? ''))
         );
         $shadowedCount = 0;
         $probeMisses = 0;
@@ -185,71 +188,6 @@ class FallbackListRenderer
         }
 
         return !$this->matches($entry, $filter);
-    }
-
-    /**
-     * Put the findings first.
-     *
-     * The list is otherwise in resolution order, which is the order Magento happened to ask for
-     * files — meaningful to nobody. Shadowed files are the reason this tool exists, so they lead;
-     * genuine anomalies follow, because they mean the analysis below them may be wrong; everything
-     * else keeps its original order.
-     *
-     * @param list<array<string, mixed>> $entries
-     * @return list<array<string, mixed>>
-     */
-    private function rank(array $entries): array
-    {
-        $weight = static function (array $entry): int {
-            if (($entry['shadowed'] ?? []) !== []) {
-                return 0;
-            }
-
-            return ($entry['anomaly'] ?? null) !== null ? 1 : 2;
-        };
-
-        // usort is not stable prior to PHP 8.0 and we rely on original order within a group, so
-        // carry the index and use it as the tie-breaker rather than trusting the sort.
-        $indexed = array_values($entries);
-        $order = array_keys($indexed);
-
-        usort($order, static function (int $a, int $b) use ($indexed, $weight): int {
-            return [$weight($indexed[$a]), $a] <=> [$weight($indexed[$b]), $b];
-        });
-
-        return array_map(static fn (int $i): array => $indexed[$i], $order);
-    }
-
-    /**
-     * Collapse repeat lookups of the same file into one row carrying a count.
-     *
-     * Magento resolves the same file more than once per request — on a static run it is reliably
-     * twice, so half of every report was a verbatim repeat of the line above it, and the headline
-     * count was double the number of files actually involved. The raw capture keeps every lookup;
-     * only the presentation is collapsed, so nothing is lost.
-     *
-     * @param list<array<string, mixed>> $classified
-     * @return list<array<string, mixed>>
-     */
-    private function collapse(array $classified): array
-    {
-        $collapsed = [];
-
-        foreach ($classified as $entry) {
-            $key = ($entry['type'] ?? '') . '|' . ($entry['module'] ?? '') . '|' . ($entry['file'] ?? '')
-                . '|' . ($entry['winner'] ?? '');
-
-            if (isset($collapsed[$key])) {
-                $collapsed[$key]['lookups']++;
-
-                continue;
-            }
-
-            $entry['lookups'] = 1;
-            $collapsed[$key] = $entry;
-        }
-
-        return array_values($collapsed);
     }
 
     /**

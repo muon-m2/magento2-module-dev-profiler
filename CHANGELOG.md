@@ -4,6 +4,51 @@ All notable changes to `Muon_DevProfiler` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is
 [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-08-14
+
+### Added
+
+- **`RunFinalizer::excludedActions`.** A `di.xml` array argument naming full action names whose runs
+  are never recorded. Default empty, so nothing changes until a consumer contributes a name.
+
+  This exists for a companion that reads the ring over HTTP. Such a module is itself a frontend
+  request, so its collectors run and its run is written like any other — and a board that polls for
+  new runs would evict the runs being inspected within seconds. The tool would destroy its own
+  evidence.
+
+  It is a constructor argument and deliberately **not** a plugin. Intercepting anything in this
+  module's constructor graph makes the object manager generate an interceptor inside
+  `___callPlugins()` — the documented cause of the `Undefined array key
+  "Magento\Framework\App\Http"` failure that took the storefront down in 1.0.0, and invisible
+  whenever `generated/` is populated.
+
+  A request that never routed has no action name, so static-asset runs cannot be excluded by
+  accident; the comparison is strict, so an empty string in the list matches nothing.
+
+- **`Model\Analysis\ResolutionSet`.** The fallback list's two presentation rules — collapse repeat
+  lookups of the same file into one row with a count, then rank shadowed first — extracted from
+  `FallbackListRenderer`'s private methods so every read surface applies the same ones.
+
+  They were private until a second surface needed them, and a second copy would have been a second
+  answer: a web board rendering the raw classification showed four identical `etc/view.xml` rows
+  where `make profile` shows one, and reported 6 shadowed files where the CLI reported 3. Two tools
+  disagreeing about one piece of evidence is worse than having one tool.
+
+- **`RunStore::count()`.** How many runs the ring holds, counted without decoding any of them, so a
+  caller that needs only the number does not pay to unserialize fifty documents to print one integer.
+
+### Fixed
+
+- **Every SQL origin pointed at this module's own logger.** `StatementOrigin`'s skip list named
+  `/Muon/DevProfiler/` — the `app/code` layout — but the module is deployed by Composer to
+  `vendor/muon/module-dev-profiler/`, which that fragment does not match. Nothing was skipped, so
+  the first frame outside the DB plumbing was always `Plugin/Db/QueryLogger.php:154`, and the origin
+  column — the whole point of capturing a backtrace — was useless on every real installation.
+
+  This is the same failure the bundled-Zend-DB entry was added to fix in 1.1.0, reappearing because
+  the module moved from `app/code` to `vendor/`. Both layouts are now named, and
+  `StatementOriginTest` covers each so the next move cannot silently break it again.
+
 ## [1.1.1] — 2026-08-13
 
 ### Fixed

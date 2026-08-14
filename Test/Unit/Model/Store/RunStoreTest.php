@@ -170,4 +170,27 @@ class RunStoreTest extends TestCase
 
         self::assertSame(4, $store->clear());
     }
+
+    public function testCountReportsHowManyRunsTheRingHolds(): void
+    {
+        self::assertSame(7, $this->store($this->paths(7))->count());
+    }
+
+    public function testCountIsZeroBeforeAnythingIsRecorded(): void
+    {
+        self::assertSame(0, $this->store([])->count());
+    }
+
+    /**
+     * The point of having count() at all: a caller that needs the number must not pay to decode
+     * every document to get it.
+     */
+    public function testCountDecodesNothing(): void
+    {
+        $paths = $this->paths(3);
+        $store = $this->store($paths);
+        $this->disk[$paths[1]] = 'not json at all';
+
+        self::assertSame(3, $store->count(), 'an undecodable file still occupies a slot in the ring');
+    }
 }

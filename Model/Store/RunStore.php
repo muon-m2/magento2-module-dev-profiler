@@ -179,6 +179,19 @@ class RunStore
     }
 
     /**
+     * How many runs the ring currently holds.
+     *
+     * Counts files without decoding any of them, so a caller that only needs the number — a status
+     * line, a header — does not pay to unserialize fifty documents to print one integer.
+     *
+     * @return int
+     */
+    public function count(): int
+    {
+        return count($this->files());
+    }
+
+    /**
      * Drop every stored run.
      *
      * @return int Number of files removed.
