@@ -47,6 +47,7 @@ class RunFinalizer
      * @param \Magento\Framework\View\DesignInterface $design
      * @param \Magento\Framework\View\Design\Theme\FlyweightFactory $themeFactory
      * @param \Psr\Log\LoggerInterface $logger
+     * @param list<string> $excludedActions Full action names whose runs are never recorded.
      */
     public function __construct(
         private readonly RunContext $context,
@@ -55,7 +56,8 @@ class RunFinalizer
         private readonly StoreManagerInterface $storeManager,
         private readonly DesignInterface $design,
         private readonly FlyweightFactory $themeFactory,
-        private readonly LoggerInterface $logger
+        private readonly LoggerInterface $logger,
+        private readonly array $excludedActions = []
     ) {
     }
 
@@ -63,11 +65,16 @@ class RunFinalizer
      * Persist the run and tag the response.
      *
      * @param \Magento\Framework\App\ResponseInterface $result
+     * @param string $kind One of self::KIND_PAGE or self::KIND_STATIC.
      * @return void
      */
     public function finalize(ResponseInterface $result, string $kind = self::KIND_PAGE): void
     {
         try {
+            if ($this->isExcluded()) {
+                return;
+            }
+
             $this->context->setMeta('request_kind', $kind);
             $this->context->freeze();
 
@@ -233,6 +240,37 @@ class RunFinalizer
 
             return null;
         }
+    }
+
+    /**
+     * Whether this request's own run must never be recorded.
+     *
+     * A companion module that reads the ring over HTTP — the board — is itself a frontend request,
+     * so its collectors run and its run would be written like any other. Left alone, opening the
+     * board and letting it poll would evict the runs being inspected within seconds: the tool would
+     * destroy its own evidence.
+     *
+     * This is a constructor argument and deliberately **not** a plugin. Intercepting anything in
+     * this module's constructor graph makes the object manager generate an interceptor inside
+     * ___callPlugins(), which is the documented cause of the "Undefined array key
+     * Magento\Framework\App\Http" failure that took the storefront down in 1.0.0 — and it is
+     * invisible whenever generated/ is populated. Consumers contribute their own action names via
+     * a di.xml argument; nothing is generated.
+     *
+     * A request that never routed has no action name, so a static-asset run can never be excluded
+     * by accident — the strict comparison also keeps an empty string in the list from matching it.
+     *
+     * @return bool
+     */
+    private function isExcluded(): bool
+    {
+        if ($this->excludedActions === []) {
+            return false;
+        }
+
+        $action = $this->fullActionName();
+
+        return $action !== null && in_array($action, $this->excludedActions, true);
     }
 
     /**

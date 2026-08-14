@@ -102,6 +102,10 @@ gate.
 Shadowed-candidate classification and the cache verdict are computed **at read time**, so the
 analysis can be improved and re-run against runs captured earlier.
 
+A module that reads the ring over HTTP is itself a frontend request, and would otherwise fill the
+ring with its own page loads. Such a companion names its actions in `excludedActions` — a `di.xml`
+argument on `RunFinalizer` — and its runs are never recorded. See `docs/technical-reference.md`.
+
 ## What it does not do
 
 Core Web Vitals, client-side errors, environment audit and threshold-based issue detection are
