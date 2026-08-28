@@ -52,6 +52,16 @@ class Gate
             return $this->profiled;
         }
 
+        // Mode is asked first, and its "no" is remembered forever. State::getMode() reads a value
+        // fixed at bootstrap from MAGE_MODE, so it cannot change within a process and a production
+        // install can answer once. Asking the area first instead costs a thrown LocalizedException
+        // on every call in any process that never sets one — which is every bin/magento command,
+        // since Console\Cli does not set an area — and that exception captures a backtrace over the
+        // whole stack, 40-80 frames deep when the caller is the DB layer.
+        if (!$this->isDeveloperMode()) {
+            return $this->profiled = false;
+        }
+
         // The answer is not knowable until the request has an area, and Http::launch() sets it
         // partway through its own execution. A caller that asks before then — a globally scoped
         // plugin, anything running during bootstrap — must get "no" *without that no being
@@ -61,7 +71,20 @@ class Gate
             return false;
         }
 
-        return $this->profiled = $this->isDeveloperMode() && $this->isFrontendArea();
+        return $this->profiled = $this->isFrontendArea();
+    }
+
+    /**
+     * Whether the answer above is final, i.e. safe for a caller to cache alongside its own state.
+     *
+     * A collector that asks per statement needs to know the difference between "no, not yet" and
+     * "no, and never on this process". Only the second may be remembered.
+     *
+     * @return bool
+     */
+    public function isDecided(): bool
+    {
+        return $this->profiled !== null;
     }
 
     /**

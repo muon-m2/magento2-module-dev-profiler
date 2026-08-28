@@ -4,6 +4,45 @@ All notable changes to `Muon_DevProfiler` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is
 [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-08-28
+
+### Security
+
+- **Raw SQL statement text is no longer stored.** `queries[].sample` now holds the normalised shape
+  instead of the verbatim statement. `ValueMasker` only ever guarded bound parameters, but Magento
+  inlines values through `quoteInto` at least as often as it binds them — every
+  `Model::load($value, $field)` and every `where('col = ?', $v)` puts the value in the statement
+  text — so a persistent-session key, a newsletter subscriber's email or a coupon code was written
+  to `var/muon/profiler/*.json` in cleartext, past the masker entirely. Measured on a live ring
+  before the fix: 397 of 1,392 statement groups carried at least one inlined literal.
+
+  `sql_varies` still answers the same question, from a CRC32 of the first raw statement held in
+  memory for the request. The raw text now never leaves the process.
+
+### Fixed
+
+- **`Gate` no longer throws an exception per statement in CLI processes.** `isProfiled()` asked
+  whether the area had resolved before asking what mode the installation was in, and the area probe
+  is a throw/catch around `State::getAreaCode()`. `Magento\Framework\Console\Cli` never sets an
+  area, so every statement issued by `setup:upgrade`, `cache:*`, `config:*` or any third-party
+  import command constructed and threw a `LocalizedException` whose backtrace was captured over a
+  40-80 frame stack — in production mode, with profiling off. Measured 13.5 µs at stack depth 10 and
+  45.6 µs at depth 50; roughly a minute of overhead per million statements.
+
+  The mode check now runs first and its "no" is memoized permanently, which is sound because
+  `State::getMode()` is fixed at bootstrap. The deliberate refusal to memoize a premature "no" is
+  unchanged, and still applies to the area question that actually needs it.
+
+- **`QueryLogger` stops re-entering the gate on every statement.** New `Gate::isDecided()`
+  distinguishes a settled "no" from "not yet", so the plugin can cache the former.
+
+### Changed
+
+- **CI runs the unit tests.** The `unit-tests` job was present but commented out, so 119 tests were
+  gated by nothing. It now runs on every push and pull request, installing `magento/*` from the
+  public Mage-OS mirror — no `repo.magento.com` credentials required. The job is deliberately
+  unconditional: a job that skips its own steps still reports success.
+
 ## [1.2.0] — 2026-08-14
 
 ### Added

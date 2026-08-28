@@ -1,6 +1,6 @@
 # Muon_DevProfiler — Technical Reference
 
-Module: `Muon_DevProfiler` · Package `muon/module-dev-profiler` 1.2.0 · OSL-3.0
+Module: `Muon_DevProfiler` · Package `muon/module-dev-profiler` 1.3.0 · OSL-3.0
 Requires PHP `~8.3.0 || ~8.4.0 || ~8.5.0`, Magento 2.4.9.
 
 ## Architecture
@@ -147,9 +147,13 @@ Paths are relative to the Magento root. Keys: `schema`, `token`, `captured_at`,
 `fallback[]`, `queries[]`, `truncated{fallback,queries}`.
 
 `queries[]` carries one entry per distinct statement shape, not per execution:
-`{fingerprint,sample,count,total_ms,max_ms,binds,origin,is_userland,sql_varies}`. `sql_varies`
-records whether the statement TEXT changed between executions — the fingerprint normalises
-inlined literals away, so without it distinct reads and a repeated one are indistinguishable.
+`{fingerprint,sample,count,total_ms,max_ms,binds,origin,is_userland,sql_varies}`. `sample` is
+the normalised shape, not the raw statement: Magento inlines values through `quoteInto` as
+often as it binds them, so storing the raw text would write customer data to disk past the
+masker that guards `binds`. `sql_varies` records whether the statement TEXT changed between
+executions — the fingerprint normalises inlined literals away, so without it distinct reads
+and a repeated one are indistinguishable. It is answered from a checksum held in memory for
+the request; the raw text is never stored.
 
 `kind` is `page` or `static` and drives the `n/a` verdict. `full_action` is `null` for requests
 that never routed. `theme_source` records how the theme was learned — `observed` (the request used

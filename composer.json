@@ -3,7 +3,7 @@
     "description": "Headless storefront request profiler: theme fallback forensics and full-page-cache verdicts, captured per request and read from the CLI. Developer mode only.",
     "type": "magento2-module",
     "license": "OSL-3.0",
-    "version": "1.2.0",
+    "version": "1.3.0",
     "authors": [
         {
             "name": "Serge Autushka",
@@ -17,6 +17,9 @@
         "magento/module-page-cache": "^100.4.9",
         "magento/module-store": "^101.1.9",
         "magento/module-theme": "^101.1.9"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^12.0"
     },
     "autoload": {
         "files": [

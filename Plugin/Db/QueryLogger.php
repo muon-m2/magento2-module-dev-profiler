@@ -88,6 +88,17 @@ class QueryLogger
     private array $groups = [];
 
     /**
+     * CRC32 of the first raw statement seen for each fingerprint, kept only to answer `sql_varies`.
+     *
+     * Deliberately not the statement itself, and deliberately not part of $groups: raw statement
+     * text is what must never reach disk (see record()), and a checksum keeps this bounded at four
+     * bytes per shape instead of holding up to 2000 full statements in request memory.
+     *
+     * @var array<string, int>
+     */
+    private array $shapeChecksums = [];
+
+    /**
      * @var bool
      */
     private bool $registered = false;
@@ -178,7 +189,14 @@ class QueryLogger
 
             $this->groups[$shape] = [
                 'fingerprint' => $shape,
-                'sample' => $sql,
+                // The SHAPE, never the raw statement. Magento inlines values through quoteInto at
+                // least as often as it binds them — Model::load($value, $field) and every
+                // where('col = ?', $v) put the value in the statement text — so storing $sql here
+                // wrote customer emails, coupon codes and persistent_session keys to disk in
+                // cleartext, past the masker that guards $bind. The fingerprint has already
+                // replaced every quoted and numeric literal with `?`, so it is the same text
+                // without the values, and it is capped where $sql was not.
+                'sample' => $shape,
                 'count' => 0,
                 'total_ms' => 0.0,
                 'max_ms' => 0.0,
@@ -194,11 +212,16 @@ class QueryLogger
             ];
         }
 
+        $checksum = crc32($sql);
+        $this->shapeChecksums[$shape] ??= $checksum;
+
         $group = &$this->groups[$shape];
 
-        // One string comparison per statement. Cheaper than storing every statement, and it turns
-        // "probably varied" into something observed rather than inferred from the presence of binds.
-        if (!$group['sql_varies'] && $sql !== $group['sample']) {
+        // One integer comparison per statement, against the first raw statement seen for this
+        // shape. It turns "probably varied" into something observed rather than inferred from the
+        // presence of binds — and it is the only reason the raw text is looked at at all, which is
+        // why a checksum is enough and the text itself is never kept.
+        if (!$group['sql_varies'] && $checksum !== $this->shapeChecksums[$shape]) {
             $group['sql_varies'] = true;
         }
 
@@ -273,8 +296,11 @@ class QueryLogger
             // Only remember the answer once it is real. Before the area resolves the gate says no,
             // and caching that would silence the collector for the rest of the request — which is
             // exactly the bug fixed in Gate itself and would be reintroduced here by a `??=`.
-            if ($answer) {
-                $this->active = true;
+            // isDecided() draws that line: it is true for a settled no (production mode, which
+            // cannot change within the process) and false for "not yet". Without it this plugin
+            // re-enters the gate for every statement of every request on every install.
+            if ($answer || $this->gate->isDecided()) {
+                $this->active = $answer;
             }
 
             return $answer;

@@ -156,6 +156,55 @@ class QueryLoggerTest extends TestCase
         self::assertTrue($recorded[0]['sql_varies'], 'three different blocks, not one block three times');
     }
 
+    /**
+     * The leak this collector shipped for two releases.
+     *
+     * ValueMasker guards $bind, but Magento inlines values through quoteInto at least as often as
+     * it binds them — every Model::load($value, $field) and every where('col = ?', $v) puts the
+     * value in the statement TEXT. Storing that text wrote it to disk past the masker entirely.
+     * Nothing recorded may contain a literal that was in the statement.
+     */
+    public function testInlinedLiteralsNeverReachTheRecordedGroup(): void
+    {
+        $logger = $this->logger();
+
+        $secrets = ['shopper@example.com', 'a7f3c9d1e5b2', 'SUMMER-40-OFF'];
+
+        $this->execute(
+            $logger,
+            "SELECT * FROM persistent_session WHERE `key` = 'a7f3c9d1e5b2' AND email = "
+            . "'shopper@example.com' AND coupon = 'SUMMER-40-OFF'"
+        );
+
+        $encoded = json_encode($this->recorded());
+
+        self::assertIsString($encoded);
+
+        foreach ($secrets as $secret) {
+            self::assertStringNotContainsString(
+                $secret,
+                $encoded,
+                sprintf('%s was inlined in the statement and must not be stored', $secret)
+            );
+        }
+    }
+
+    /**
+     * The stored sample is the shape, and the Board renders it — so it must stay readable SQL,
+     * not be blanked. Dropping the key instead would silently empty the board's SQL column.
+     */
+    public function testTheStoredSampleIsTheNormalisedShape(): void
+    {
+        $logger = $this->logger();
+
+        $this->execute($logger, "SELECT * FROM cms_block WHERE identifier = 'header_panel' AND store_id = 7");
+
+        $recorded = $this->recorded();
+
+        self::assertSame($recorded[0]['fingerprint'], $recorded[0]['sample']);
+        self::assertSame('SELECT * FROM cms_block WHERE identifier = ? AND store_id = ?', $recorded[0]['sample']);
+    }
+
     public function testRepeatingOneIdenticalStatementIsNotRecordedAsVariation(): void
     {
         $logger = $this->logger();
