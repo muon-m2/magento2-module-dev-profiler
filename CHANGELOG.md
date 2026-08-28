@@ -4,6 +4,18 @@ All notable changes to `Muon_DevProfiler` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is
 [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] — 2026-08-28
+
+### Fixed
+
+- **`LICENSE.txt` now carries the full verbatim OSL-3.0 text.** It previously held a 503-word
+  excerpt ending in a link, which omitted operative sections — Termination for Patent Action and
+  Jurisdiction among them — and which license detectors do not recognize: GitHub reported this
+  repository as `NOASSERTION` / "Other" rather than OSL-3.0.
+
+  The declared license is unchanged; only the text shipped alongside it is now complete. The file
+  is byte-identical to the one in `Muon_DevProfilerBoard`, which relicensed to OSL-3.0 in its 1.1.0.
+
 ## [1.3.0] — 2026-08-28
 
 ### Security
