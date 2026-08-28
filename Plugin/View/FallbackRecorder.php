@@ -9,6 +9,7 @@ declare(strict_types=1);
 namespace Muon\DevProfiler\Plugin\View;
 
 use Magento\Framework\App\Filesystem\DirectoryList;
+use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
 use Magento\Framework\View\Design\FileResolution\Fallback\ResolverInterface;
 use Magento\Framework\View\Design\ThemeInterface;
 use Muon\DevProfiler\Model\Run\Gate;
@@ -26,7 +27,7 @@ use Muon\DevProfiler\Model\Run\RunContext;
  * deliberately not done here. ShadowResolver replays the same lookup at read time, in the CLI,
  * where thousands of stat calls cost the profiled page nothing.
  */
-class FallbackRecorder
+class FallbackRecorder implements ResetAfterRequestInterface
 {
     /**
      * @var string|null
@@ -108,5 +109,18 @@ class FallbackRecorder
         }
 
         return str_starts_with($path, $this->root) ? substr($path, strlen($this->root)) : $path;
+    }
+
+    /**
+     * Clear per-request state so a long-running process does not carry it into the next request.
+     *
+     * The resolved root is filesystem state: cheap to recompute, wrong to assume across requests.
+     *
+     * @return void
+     * @SuppressWarnings(PHPMD.CamelCaseMethodName) The name is fixed by ResetAfterRequestInterface.
+     */
+    public function _resetState(): void
+    {
+        $this->root = null;
     }
 }

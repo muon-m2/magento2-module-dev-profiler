@@ -1,6 +1,6 @@
 # Muon_DevProfiler — Technical Reference
 
-Module: `Muon_DevProfiler` · Package `muon/module-dev-profiler` 1.3.1 · OSL-3.0
+Module: `Muon_DevProfiler` · Package `muon/module-dev-profiler` 1.4.0 · OSL-3.0
 Requires PHP `~8.3.0 || ~8.4.0 || ~8.5.0`, Magento 2.4.9.
 
 ## Architecture
@@ -14,7 +14,8 @@ graph TD
         G[Gate<br/>developer mode AND frontend area]
         RC[RunContext<br/>capped array appends]
         FR[FallbackRecorder<br/>afterResolve]
-        LV[LayoutVerdict<br/>around generateXml/generateElements]
+        LV[LayoutVerdict<br/>after generateXml/generateElements]
+        QL[QueryLogger<br/>before startTimer/logStats — <b>global</b>]
         LO[LayoutOptOut<br/>afterCreate on LayoutFactory]
         TH[TemplateHints<br/>afterCreate on TemplateEngineFactory]
     end
@@ -51,10 +52,23 @@ graph TD
 | Target | Type | Class | Scope |
 |---|---|---|---|
 | `View\Design\FileResolution\Fallback\ResolverInterface` | after | `Plugin\View\FallbackRecorder` | frontend |
-| `View\Layout` | around | `Plugin\View\LayoutVerdict` | frontend |
+| `View\Layout` | after | `Plugin\View\LayoutVerdict` | frontend |
 | `View\LayoutFactory` | after | `Plugin\View\LayoutOptOut` | frontend |
 | `View\TemplateEngineFactory` | after | `Plugin\View\TemplateHints` | frontend |
 | `App\StaticResource` | after | `Plugin\App\StaticResourceWriter` | **global** |
+| `DB\LoggerInterface` | before | `Plugin\Db\QueryLogger` | **global** |
+
+`DB\LoggerInterface` is the one that matters for cost, and it was missing from this table until
+1.4.0. It fires on every statement of every request in every area — adminhtml, REST, GraphQL, cron,
+consumers — because `LoggerInterface` is resolved during the first configuration read, before any
+area exists, so it cannot be area-scoped. No other module on a stock install plugs it, so the
+interceptor exists because of this module.
+
+With the gate settled the cost is roughly **3.6µs per statement**, about **1.5ms on a 200-query
+page**. That is the residual after the 1.4.0 gate reordering, which removed a thrown
+`LocalizedException` per statement in any process without an area code. It is unavoidable while the
+module is enabled: developer mode gates what is *recorded*, not what is *dispatched*. An install
+that cannot accept it should disable the module rather than rely on the mode.
 
 Plus one observer, in `etc/frontend/events.xml`:
 

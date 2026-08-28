@@ -9,9 +9,10 @@ declare(strict_types=1);
 namespace Muon\DevProfiler\Model\Analysis;
 
 use Magento\Framework\App\Filesystem\DirectoryList;
+use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
 use Magento\Framework\View\Design\Fallback\RulePool;
-use Magento\Framework\View\Design\Theme\FlyweightFactory;
 use Magento\Framework\View\Design\ThemeInterface;
+use Magento\Framework\View\Design\Theme\FlyweightFactory;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -32,8 +33,10 @@ use Psr\Log\LoggerInterface;
  * stat calls on the page being measured. Deferring costs nothing, because the recorded arguments
  * are sufficient to reproduce the lookup exactly — including the theme, which is rebuilt by path
  * with the area passed explicitly, so no area emulation is required.
+ *
+ * @api
  */
-class ShadowResolver
+class ShadowResolver implements ResetAfterRequestInterface
 {
     /**
      * Recorded resolution types mapped to the fallback rule that produced them.
@@ -304,5 +307,18 @@ class ShadowResolver
         }
 
         return str_starts_with($path, $root) ? substr($path, strlen($root)) : $path;
+    }
+
+    /**
+     * Clear per-request state so a long-running process does not carry it into the next request.
+     *
+     * A cache of theme lookups: safe to drop, unsafe to keep if the theme registry changed.
+     *
+     * @return void
+     * @SuppressWarnings(PHPMD.CamelCaseMethodName) The name is fixed by ResetAfterRequestInterface.
+     */
+    public function _resetState(): void
+    {
+        $this->themes = [];
     }
 }

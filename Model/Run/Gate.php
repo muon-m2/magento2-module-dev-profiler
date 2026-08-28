@@ -10,6 +10,7 @@ namespace Muon\DevProfiler\Model\Run;
 
 use Magento\Framework\App\Area;
 use Magento\Framework\App\State;
+use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
 
 /**
  * Decides whether this request is profiled.
@@ -23,8 +24,12 @@ use Magento\Framework\App\State;
  * Both checks fail closed. An installation that cannot report its own mode or has not yet
  * resolved an area is treated as production, because the alternative — assuming developer mode
  * when we cannot tell — is the one mistake with a real consequence.
+ *
+ * Only two answers are remembered: a settled no from the deployment mode, which cannot change
+ * within a process, and a yes from an area the process actually set. An answer derived from an
+ * emulated area is never cached — see isProfiled().
  */
-class Gate
+class Gate implements ResetAfterRequestInterface
 {
     /**
      * Memoized answer; null until the first call resolves it.
@@ -71,6 +76,17 @@ class Gate
             return false;
         }
 
+        // An emulated area is borrowed, not the process's own. Widget\FilterEmulate, PageBuilder's
+        // DesignLoader, Email\Filter and the catalog image collector all call emulateAreaCode()
+        // with 'frontend' and restore it afterwards — so a yes derived from one is true for the
+        // duration of a closure, not the request. Latching it would arm the collectors for the rest
+        // of an admin request, a bin/magento command or a cron process, where RunFinalizer never
+        // fires: nothing is written, nothing is freed, and the recorder grows all the way to the
+        // end of the process. Answer honestly, remember nothing.
+        if ($this->areaEmulated()) {
+            return $this->isFrontendArea();
+        }
+
         return $this->profiled = $this->isFrontendArea();
     }
 
@@ -85,6 +101,22 @@ class Gate
     public function isDecided(): bool
     {
         return $this->profiled !== null;
+    }
+
+    /**
+     * Whether the current area code was borrowed via emulateAreaCode() rather than set for real.
+     *
+     * @return bool
+     */
+    private function areaEmulated(): bool
+    {
+        try {
+            return $this->appState->isAreaCodeEmulated();
+        } catch (\Throwable) {
+            // Unknown means "assume borrowed": refusing to memoize costs a property read per call,
+            // where wrongly memoizing arms the collectors for a whole process.
+            return true;
+        }
     }
 
     /**
@@ -130,5 +162,19 @@ class Gate
             // Thrown when the area is not set yet, which is itself the answer: not yet.
             return false;
         }
+    }
+
+    /**
+     * Clear per-request state so a long-running process does not carry it into the next request.
+     *
+     * The memoized answer is safe only because a process is normally one request. Where it is not, the
+     * next request must ask again.
+     *
+     * @return void
+     * @SuppressWarnings(PHPMD.CamelCaseMethodName) The name is fixed by ResetAfterRequestInterface.
+     */
+    public function _resetState(): void
+    {
+        $this->profiled = null;
     }
 }

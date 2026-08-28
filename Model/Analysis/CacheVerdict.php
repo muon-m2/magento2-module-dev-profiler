@@ -18,6 +18,8 @@ namespace Muon\DevProfiler\Model\Analysis;
  *
  * Both paths are recorded upstream, so both can be named here. When neither names anything, this
  * says so. An invented cause is worse than no cause: it sends somebody to edit the wrong file.
+ *
+ * @api
  */
 class CacheVerdict
 {

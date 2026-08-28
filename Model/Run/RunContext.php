@@ -8,6 +8,8 @@ declare(strict_types=1);
 
 namespace Muon\DevProfiler\Model\Run;
 
+use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
+
 /**
  * The per-request recorder every collector writes into.
  *
@@ -19,7 +21,7 @@ namespace Muon\DevProfiler\Model\Run;
  * Every list is capped. Once full it stops growing and counts what it dropped, so a report can
  * say "312 of 2841" rather than quietly implying that was all of them.
  */
-class RunContext
+class RunContext implements ResetAfterRequestInterface
 {
     /**
      * Lazily generated run identifier.
@@ -244,5 +246,24 @@ class RunContext
     public function isFrozen(): bool
     {
         return $this->frozen;
+    }
+
+    /**
+     * Clear per-request state so a long-running process does not carry it into the next request.
+     *
+     * Everything here is one request's recording. Carried into the next request it would attribute one
+     * page's queries and fallbacks to another.
+     *
+     * @return void
+     * @SuppressWarnings(PHPMD.CamelCaseMethodName) The name is fixed by ResetAfterRequestInterface.
+     */
+    public function _resetState(): void
+    {
+        $this->token = null;
+        $this->lists = [];
+        $this->dropped = [];
+        $this->meta = [];
+        $this->metaProviders = [];
+        $this->frozen = false;
     }
 }
