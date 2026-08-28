@@ -50,8 +50,11 @@ Statements are grouped by shape, so a loop issuing 50 lookups appears once with 
 site that produced it. Thresholds are applied when you read, not when the page ran — the same
 capture can be re-examined at a different sensitivity without reloading anything.
 
-Bound values are masked before they are stored. Numeric ids are deliberately kept: they are the
-evidence that separates an N+1 from a plain duplicate.
+Bound values are masked before they are stored, and the statement itself is stored as its
+normalised shape rather than verbatim — Magento inlines values into SQL text at least as often
+as it binds them, so masking only the binds would have left the rest in the clear. Numeric ids
+in binds are deliberately kept: they are the evidence that separates an N+1 from a plain
+duplicate.
 
 ## Use
 

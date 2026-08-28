@@ -1,9 +1,8 @@
 # GitHub Actions CI for a standalone Magento 2 module.
 #
 # Runs on every push and pull request to main.
-# Does NOT require Magento repo credentials for the static analysis jobs.
-# Unit tests are disabled by default — see the "unit-tests" job below for
-# instructions on enabling them with Magento repo auth.
+# Requires no repo.magento.com credentials: QA tools come from Packagist and
+# magento/* packages from the public Mage-OS mirror.
 
 name: CI
 
@@ -127,45 +126,38 @@ jobs:
             --exclude vendor/,Test/
 
   # ── Unit Tests ──────────────────────────────────────────────────────────────
-  # Disabled by default because Magento framework classes are required at
-  # runtime and magento/framework lives behind repo.magento.com authentication.
+  # Runs unconditionally. It needs no repo.magento.com credentials: magento/*
+  # packages are pulled from the public Mage-OS mirror, which carries the same
+  # Open Source releases. The mirror is configured here rather than in
+  # composer.json so it applies to CI only and never to a consuming install.
   #
-  # To enable:
-  #   1. Add two GitHub Actions secrets holding your repo.magento.com keys —
-  #      MAGENTO_COMPOSER_AUTH_USER (public key) and
-  #      MAGENTO_COMPOSER_AUTH_PASS (private key). The step below passes them to
-  #      `composer config http-basic.repo.magento.com`.
-  #   2. Uncomment the job below.
-  #   3. Add require-dev to the module's composer.json:
-  #        "require-dev": {
-  #            "magento/magento2-base": "^2.4",
-  #            "phpunit/phpunit": "^10.5"
-  #        }
-  #
-  # unit-tests:
-  #   name: Unit Tests
-  #   runs-on: ubuntu-latest
-  #   needs: static-analysis
-  #
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-  #
-  #     - name: Set up PHP 8.3
-  #       uses: shivammathur/setup-php@v2
-  #       with:
-  #         php-version: '8.3'
-  #         extensions: intl, zip, bcmath, soap
-  #         tools: composer:v2
-  #         coverage: none
-  #
-  #     - name: Configure Magento repo credentials
-  #       run: composer config -g http-basic.repo.magento.com \
-  #              "${{ secrets.MAGENTO_COMPOSER_AUTH_USER }}" \
-  #              "${{ secrets.MAGENTO_COMPOSER_AUTH_PASS }}"
-  #
-  #     - name: Install dependencies
-  #       run: composer install --no-progress --prefer-dist --no-interaction
-  #
-  #     - name: Run unit tests
-  #       run: vendor/bin/phpunit --testsuite unit
+  # This job must never be made conditional on a secret being present. A job
+  # that skips its own steps still reports success, so the badge stays green
+  # while nothing is verified — which is the exact failure this replaced.
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: static-analysis
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: intl, zip, bcmath, soap
+          tools: composer:v2
+          coverage: none
+
+      - name: Use the public Mage-OS mirror for magento/* packages
+        run: |
+          composer config repositories.mageos composer https://mirror.mage-os.org/
+          composer config --no-plugins allow-plugins false
+
+      - name: Install dependencies
+        run: composer install --no-progress --prefer-dist --no-interaction
+
+      - name: Run unit tests
+        run: vendor/bin/phpunit --no-coverage Test/Unit

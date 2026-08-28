@@ -90,4 +90,57 @@ class GateTest extends TestCase
         self::assertFalse($gate->isProfiled(), 'asked too early — must answer no');
         self::assertTrue($gate->isProfiled(), 'once the area resolves the early no must not persist');
     }
+
+    /**
+     * The other regression, and the more expensive one.
+     *
+     * getAreaCode() throws when no area is set, and bin/magento never sets one — so asking it
+     * before the mode cost a constructed-and-thrown LocalizedException per call, with a backtrace
+     * captured over the whole stack. Every production install paid it on every statement.
+     */
+    public function testProductionModeIsAnsweredWithoutEverAskingForTheArea(): void
+    {
+        /** @var State&\PHPUnit\Framework\MockObject\MockObject $state */
+        $state = $this->createMock(State::class);
+        $state->method('getMode')->willReturn(State::MODE_PRODUCTION);
+        $state->expects(self::never())->method('getAreaCode');
+
+        self::assertFalse((new Gate($state))->isProfiled());
+    }
+
+    /**
+     * A mode that cannot change within the process may be answered once and remembered, so a
+     * caller asking per statement is not re-entered thousands of times.
+     */
+    public function testASettledNoIsAskedOnlyOnce(): void
+    {
+        /** @var State&\PHPUnit\Framework\MockObject\MockObject $state */
+        $state = $this->createMock(State::class);
+        $state->expects(self::once())->method('getMode')->willReturn(State::MODE_PRODUCTION);
+
+        $gate = new Gate($state);
+
+        self::assertFalse($gate->isProfiled());
+        self::assertFalse($gate->isProfiled());
+        self::assertFalse($gate->isProfiled());
+    }
+
+    public function testReportsWhetherItsAnswerIsSettled(): void
+    {
+        $decided = $this->gate(State::MODE_PRODUCTION, Area::AREA_FRONTEND);
+        $decided->isProfiled();
+
+        self::assertTrue($decided->isDecided(), 'production cannot change — the no is final');
+
+        /** @var State&\PHPUnit\Framework\MockObject\MockObject $state */
+        $state = $this->createMock(State::class);
+        $state->method('getMode')->willReturn(State::MODE_DEVELOPER);
+        $state->method('getAreaCode')
+            ->willThrowException(new LocalizedException(new Phrase('Area code is not set')));
+
+        $premature = new Gate($state);
+
+        self::assertFalse($premature->isProfiled());
+        self::assertFalse($premature->isDecided(), 'a not-yet must never be cached by a caller');
+    }
 }
