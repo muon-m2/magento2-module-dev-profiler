@@ -70,9 +70,21 @@ class FallbackListRenderer
             return $lines;
         }
 
-        $classified = $this->resolutions->present(
-            $this->shadows->classify($recorded, (string)($context['theme_path'] ?? ''))
+        // Collapse first, then classify: ShadowResolver stats every candidate directory per entry,
+        // and about half of a run's entries are repeat lookups of a file already probed.
+        $collapsed = $this->resolutions->collapseRecorded(array_values($recorded));
+        $classified = $this->shadows->classify(
+            array_column($collapsed, 'entry'),
+            (string)($context['theme_path'] ?? '')
         );
+
+        // classifyOne() rebuilds its result array, so the counts are re-attached by position —
+        // classify() returns one row per input row, in order.
+        foreach ($classified as $index => $row) {
+            $classified[$index]['lookups'] = $collapsed[$index]['lookups'] ?? 1;
+        }
+
+        $classified = $this->resolutions->rank($classified);
         $shadowedCount = 0;
         $probeMisses = 0;
         $body = [];

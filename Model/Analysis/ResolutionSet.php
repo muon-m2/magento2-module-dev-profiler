@@ -36,6 +36,53 @@ class ResolutionSet
     }
 
     /**
+     * Collapse repeat lookups *before* classification, on the recorded entry's own identity.
+     *
+     * ShadowResolver::classify() stats every candidate directory for every entry it is handed, and
+     * Magento resolves the same file more than once per request — reliably twice on a static run.
+     * Collapsing afterwards, as present() does, means those duplicate stat calls have already been
+     * paid: roughly 1,200-5,000 is_file() calls on a real run, about half of them repeats of a path
+     * already probed.
+     *
+     * Safe because classification is a pure function of exactly these keys, so two entries that
+     * collapse here would have classified identically. The count is returned alongside rather than
+     * inside the entry, because classifyOne() rebuilds its result array and would drop it.
+     *
+     * @param list<array<string, mixed>> $recorded Raw fallback entries, as captured.
+     * @return list<array{entry: array<string, mixed>, lookups: int}>
+     */
+    public function collapseRecorded(array $recorded): array
+    {
+        $collapsed = [];
+
+        foreach ($recorded as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $key = implode('|', [
+                (string)($entry['type'] ?? ''),
+                (string)($entry['module'] ?? ''),
+                (string)($entry['file'] ?? ''),
+                (string)($entry['area'] ?? ''),
+                (string)($entry['locale'] ?? ''),
+                (string)($entry['theme'] ?? ''),
+                (string)($entry['resolved'] ?? ''),
+            ]);
+
+            if (isset($collapsed[$key])) {
+                $collapsed[$key]['lookups']++;
+
+                continue;
+            }
+
+            $collapsed[$key] = ['entry' => $entry, 'lookups' => 1];
+        }
+
+        return array_values($collapsed);
+    }
+
+    /**
      * Collapse repeat lookups of the same file into one row carrying a count.
      *
      * Magento resolves the same file more than once per request — on a static run it is reliably

@@ -46,6 +46,11 @@ class RunStore implements RunReaderInterface
     private const TOKEN_PATTERN = '/[^a-f0-9]/';
 
     /**
+     * Suffix for the half-written file, so a partial run is never a candidate for reading.
+     */
+    private const TMP_SUFFIX = '.part';
+
+    /**
      * @var \Magento\Framework\Filesystem\Directory\WriteInterface|null
      */
     private ?WriteInterface $varDirectory = null;
@@ -60,7 +65,8 @@ class RunStore implements RunReaderInterface
         private readonly Filesystem $filesystem,
         private readonly Json $json,
         private readonly LoggerInterface $logger,
-        private readonly int $ringSize = 50
+        private readonly int $ringSize = 50,
+        private readonly int $maxAgeHours = 72
     ) {
     }
 
@@ -86,7 +92,16 @@ class RunStore implements RunReaderInterface
             // Cast is not cosmetic: Magento types serialize() as bool|string, so writeFile()'s
             // string parameter is a real type error without it.
             $encoded = (string)$this->json->serialize($run);
-            $directory->writeFile(self::DIR . '/' . $this->filename($token), $encoded);
+            $target = self::DIR . '/' . $this->filename($token);
+
+            // Written to a temporary name and renamed into place. writeFile() truncates and then
+            // writes with no lock, so a reader listing the directory mid-write saw a partial file,
+            // caught the decode failure and silently skipped the run — `muon:profile:list --limit=20`
+            // quietly returning nineteen. rename() within one filesystem is atomic, so a run is
+            // either absent or complete.
+            $directory->writeFile($target . self::TMP_SUFFIX, $encoded);
+            $directory->renameFile($target . self::TMP_SUFFIX, $target);
+            $this->restrict($directory, $target);
 
             $this->prune();
         } catch (\Throwable $e) {
@@ -146,7 +161,12 @@ class RunStore implements RunReaderInterface
         foreach (array_reverse($this->files()) as $path) {
             $run = $this->read($path);
 
-            if ($run !== null && empty($run['request']['is_ajax'])) {
+            // A static-asset run has is_ajax => false, so it satisfied the old condition and could
+            // be returned as "the last full document" — which it is not. Right after a static
+            // rebuild that meant answering with a LESS file's run, for which the verdict is n/a.
+            $kind = (string)($run['request']['kind'] ?? 'page');
+
+            if ($run !== null && empty($run['request']['is_ajax']) && $kind !== 'static') {
                 return $run;
             }
         }
@@ -242,6 +262,16 @@ class RunStore implements RunReaderInterface
     private function prune(): void
     {
         $files = $this->files();
+
+        // By age first. The ring only ever shrank on write, so once profiling stopped, up to
+        // ringSize documents — full request URIs, resolved file paths, statement shapes — sat in
+        // var/ indefinitely, and the only way to remove them was to remember to run
+        // `bin/magento muon:profile:clear`. Retention should not depend on remembering.
+        foreach ($this->expired($files) as $path) {
+            $this->remove($path);
+            $files = array_values(array_diff($files, [$path]));
+        }
+
         $excess = count($files) - max(1, $this->ringSize);
 
         if ($excess <= 0) {
@@ -250,6 +280,67 @@ class RunStore implements RunReaderInterface
 
         foreach (array_slice($files, 0, $excess) as $path) {
             $this->remove($path);
+        }
+    }
+
+    /**
+     * Files older than the retention window, by the millisecond timestamp in their own name.
+     *
+     * Read from the filename rather than from the filesystem: it is the value the writer chose, it
+     * needs no stat call per file, and it cannot drift when a directory is copied about.
+     *
+     * @param list<string> $files
+     * @return list<string>
+     */
+    private function expired(array $files): array
+    {
+        if ($this->maxAgeHours <= 0) {
+            return [];
+        }
+
+        $cutoff = (time() - ($this->maxAgeHours * 3600)) * 1000;
+        $old = [];
+
+        foreach ($files as $path) {
+            if (preg_match('/(\d{10,})-[a-f0-9]+\.json$/', $path, $m) === 1 && (int)$m[1] < $cutoff) {
+                $old[] = $path;
+            }
+        }
+
+        return $old;
+    }
+
+    /**
+     * Narrow the permissions Magento's Filesystem leaves behind.
+     *
+     * create() and writeFile() take the directory's configured mode, which is 0777 by default and
+     * lands as 0755/0644 under the usual umask — world-readable. These files hold request URIs and
+     * statement shapes, and anything that tars var/ for a backup or a support bundle carries them
+     * off the box.
+     *
+     * Through the Filesystem API rather than chmod(), so failures arrive as exceptions this method
+     * already catches instead of as suppressed warnings.
+     *
+     * @param \Magento\Framework\Filesystem\Directory\WriteInterface $directory
+     * @param string $path
+     * @return void
+     */
+    private function restrict(WriteInterface $directory, string $path): void
+    {
+        try {
+            $directory->changePermissions($path, 0600);
+            $directory->changePermissions(self::DIR, 0700);
+
+            // Self-protecting even where the document root is misconfigured to serve var/.
+            $guard = self::DIR . '/.htaccess';
+
+            if (!$directory->isExist($guard)) {
+                $directory->writeFile($guard, "Require all denied\n");
+            }
+        } catch (\Throwable) {
+            // Tightening permissions is defence in depth. Failing to is not a reason to lose the
+            // run, and on some filesystems (a bind mount from a host that does not support it) the
+            // call cannot succeed at all.
         }
     }
 

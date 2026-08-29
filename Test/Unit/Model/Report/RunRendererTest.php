@@ -81,14 +81,46 @@ class RunRendererTest extends TestCase
         ], $extra);
     }
 
+    /**
+     * The point of collapsing first: ShadowResolver stats every candidate directory for every entry
+     * it is handed, and about half of a real run's entries are repeat lookups of a file already
+     * probed. Collapsing afterwards paid for those stat calls before discarding them.
+     */
+    public function testTheResolverIsOnlyAskedAboutDistinctLookups(): void
+    {
+        /** @var ShadowResolver&\PHPUnit\Framework\MockObject\MockObject $shadows */
+        $shadows = $this->createMock(ShadowResolver::class);
+        $shadows->expects(self::once())
+            ->method('classify')
+            ->with(self::callback(static fn (array $given): bool => count($given) === 1))
+            ->willReturn([$this->entry('tokens.less')]);
+
+        $renderer = new RunRenderer(
+            new FallbackListRenderer($shadows, new ResolutionSet()),
+            new SqlListRenderer(new QueryAnalyzer()),
+            new CacheVerdict()
+        );
+
+        $renderer->render($this->profileRun([
+            'fallback' => [
+                ['type' => 'static', 'file' => 'tokens.less'],
+                ['type' => 'static', 'file' => 'tokens.less'],
+                ['type' => 'static', 'file' => 'tokens.less'],
+            ],
+        ]));
+    }
+
     public function testRepeatLookupsCollapseIntoOneRowWithACount(): void
     {
-        $renderer = $this->renderer([$this->entry('tokens.less'), $this->entry('tokens.less')]);
-
-        // Both numbers in the header have to come from a run that could actually have happened:
-        // `distinct` is counted from the resolver's output and `lookups` from what was recorded,
-        // so a fixture with two classified entries and one recorded lookup tests nothing — the two
-        // halves never meet. Two recorded lookups of one file is the case being described.
+        // The collapse now happens BEFORE classification, so ShadowResolver is handed one entry and
+        // stats its candidate directories once instead of twice. The stub therefore returns one
+        // classified row — which is what the real resolver would return for the collapsed input.
+        //
+        // Both numbers in the header still have to come from a run that could actually have
+        // happened: `distinct` is counted from the resolver's output and `lookups` from what was
+        // recorded, so a fixture where the two halves never meet tests nothing. Two recorded
+        // lookups of one file is the case being described.
+        $renderer = $this->renderer([$this->entry('tokens.less')]);
         $out = implode("\n", $renderer->render($this->profileRun([
             'fallback' => [
                 ['type' => 'static', 'file' => 'tokens.less'],

@@ -1,5 +1,7 @@
 # Muon_DevProfiler
 
+**[Documentation](https://muon-m2.github.io/magento2-module-dev-profiler/)** · [Changelog](CHANGELOG.md) · [Technical reference](docs/technical-reference.md) · [Muon_DevProfilerBoard](https://muon-m2.github.io/magento2-module-dev-profiler-board/) — a web board that reads the same captures
+
 Headless storefront request profiler for Magento 2. Records **which physical file won every theme
 fallback lookup** and **why a page was or was not full-page cached**, writes it to a JSON file, and
 reads it back from the CLI.

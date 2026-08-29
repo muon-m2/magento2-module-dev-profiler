@@ -203,6 +203,9 @@ class QueryLogger implements ResetAfterRequestInterface
                 'max_ms' => 0.0,
                 'binds' => $this->masker->maskBinds($bind),
                 'origin' => null,
+                // Whether a stack walk has been attempted for this shape, which is not the same as
+                // whether it produced an answer. Not persisted — see the trimming in the provider.
+                'origin_tried' => false,
                 'is_userland' => false,
                 // Whether the statement TEXT differed between executions of this shape. Magento
                 // inlines literals as often as it binds them, and the fingerprint normalises those
@@ -230,7 +233,12 @@ class QueryLogger implements ResetAfterRequestInterface
         $group['total_ms'] = round($group['total_ms'] + $ms, 3);
         $group['max_ms'] = round(max($group['max_ms'], $ms), 3);
 
-        if ($group['origin'] === null && $this->worthTracing($ms, $group['count'])) {
+        // `origin_tried`, not `origin === null`: StatementOrigin returns null when all thirty
+        // captured frames matched the skip list, and writing that null back left the guard open, so
+        // a shape that is consistently slow and lives entirely inside framework/DB walked the stack
+        // again on every execution over the threshold instead of once.
+        if (empty($group['origin_tried']) && $this->worthTracing($ms, $group['count'])) {
+            $group['origin_tried'] = true;
             $resolved = $this->origin->resolve(debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, self::TRACE_DEPTH));
             $group['origin'] = $resolved['origin'];
             $group['is_userland'] = $resolved['is_userland'];
@@ -255,7 +263,17 @@ class QueryLogger implements ResetAfterRequestInterface
         }
 
         $this->registered = true;
-        $this->context->setMetaProvider('queries', fn (): array => array_values($this->groups));
+        // `origin_tried` is bookkeeping for this request, not part of the stored document — the
+        // board and the CLI both read this array, and a key that means "we already looked" would
+        // be noise in a capture that outlives the process.
+        $this->context->setMetaProvider('queries', fn (): array => array_values(array_map(
+            static function (array $group): array {
+                unset($group['origin_tried']);
+
+                return $group;
+            },
+            $this->groups
+        )));
     }
 
     /**
