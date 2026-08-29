@@ -319,7 +319,18 @@ class RunFinalizer
 
         $action = $this->fullActionName();
 
-        return $action !== null && in_array($action, $this->excludedActions, true);
+        if ($action === null) {
+            return false;
+        }
+
+        // Both sides lower-cased. Router\Base sets the controller and action names from the raw URL
+        // path segments with case preserved, while ActionList lower-cases only for class
+        // resolution — so /muon_profiler/Run/View resolves correctly and yields
+        // muon_profiler_Run_View, which a case-sensitive comparison misses. A consumer's own run
+        // then gets recorded and evicts an entry from the ring it was opened to read.
+        $excluded = array_map(static fn (string $name): string => strtolower($name), $this->excludedActions);
+
+        return in_array(strtolower($action), $excluded, true);
     }
 
     /**

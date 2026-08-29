@@ -29,6 +29,12 @@ Closes the Low findings from the 2026-08-28 release-readiness audit.
   the run — `muon:profile:list --limit=20` quietly returning nineteen. Written to a `.part` name and
   renamed into place, so a run is either absent or complete.
 
+- **The action-exclusion list is matched case-insensitively.** `Router\Base` sets the controller
+  and action names from the raw URL path segments with case preserved, while `ActionList`
+  lower-cases only for class resolution — so a hand-typed `/muon_profiler/Run/View` routes correctly
+  and reports `muon_profiler_Run_View`, which the strict comparison missed. A consumer's own run was
+  then recorded, evicting an entry from the ring it was opened to read.
+
 - **`loadLastDocument()` no longer returns a static-asset run.** A static run has `is_ajax => false`,
   so it satisfied the old condition and could be answered as "the last full document" — right after
   a static rebuild that meant a LESS file's run, whose verdict is `n/a`.
