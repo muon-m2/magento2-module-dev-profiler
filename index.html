@@ -134,6 +134,21 @@ bin/magento muon:profile:clear                   <span class="c"># empty the rin
         values are masked by key and by shape; numeric ids are deliberately kept, because they are the
         evidence that separates an N+1 from a plain duplicate.
     </p>
+    <h3>How it is stored</h3>
+    <p>
+        Runs still describe real traffic, so since 1.5.0 they are written <code>0600</code> into a
+        <code>0700</code> directory with an <code>.htaccess</code> guard beside them — a profiler
+        directory should be safe even on an install whose document root is misconfigured to serve
+        <code>var/</code>. Writes go to a temporary name and are renamed into place, so a reader
+        listing the directory mid-write cannot catch a half-written file.
+    </p>
+    <p>
+        The ring prunes by age as well as by count: anything older than 72 hours is dropped, and the
+        window is enforced on every path that lists runs rather than only on write. A window that
+        applied only while profiling was active would leave exactly the wrong person — someone who
+        profiled once and stopped — with captured requests on disk indefinitely. Set
+        <code>maxAgeHours</code> to <code>0</code> in <code>di.xml</code> to opt out.
+    </p>
 </section>
 
 <section id="board">
