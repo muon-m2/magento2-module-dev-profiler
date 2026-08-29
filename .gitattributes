@@ -1,1 +1,17 @@
+# Normalise line endings: `text=auto` stores LF in the repository whatever the contributor's
+# platform, `eol=lf` checks it back out as LF, so a clone on a machine with core.autocrlf=true
+# does not differ from the Composer dist on every line.
 * text=auto eol=lf
+
+# Keep the Composer dist to what a consumer actually needs.
+#
+# Test code and CI config are dead weight in every consumer's vendor/, and because the PSR-4 root
+# is the module root the Test classes land in the optimised classmap too.
+#
+# docs/ and CHANGELOG.md deliberately DO ship: this is a developer tool, the reference is the
+# reason to keep it around, and the README links to both.
+/Test           export-ignore
+/.github        export-ignore
+/phpmd.xml      export-ignore
+/.gitattributes export-ignore
+/.gitignore     export-ignore

@@ -223,9 +223,10 @@ class RunFinalizerTest extends TestCase
     /**
      * @param HttpRequest $request
      * @param RunStore $store
+     * @param list<string> $excluded
      * @return RunFinalizer
      */
-    private function finalizerWith(HttpRequest $request, RunStore $store): RunFinalizer
+    private function finalizerWith(HttpRequest $request, RunStore $store, array $excluded = []): RunFinalizer
     {
         $store2 = $this->createStub(StoreInterface::class);
         $store2->method('getCode')->willReturn('en_us');
@@ -248,7 +249,31 @@ class RunFinalizerTest extends TestCase
             $design,
             $this->createStub(FlyweightFactory::class),
             $this->createStub(LoggerInterface::class),
-            new ValueMasker()
+            new ValueMasker(),
+            $excluded
         );
+    }
+
+    /**
+     * Router\Base preserves the case of the URL's path segments; only class resolution lower-cases.
+     * A hand-typed /muon_profiler/Run/View therefore routes correctly and reports
+     * muon_profiler_Run_View, which a case-sensitive comparison misses — and the consumer's own run
+     * is recorded, evicting an entry from the ring it was opened to read.
+     */
+    #[AllowMockObjectsWithoutExpectations] // setUp()'s shared fixtures are unused here.
+    public function testAnExcludedActionMatchesWhateverCaseTheUrlUsed(): void
+    {
+        $request = $this->createStub(HttpRequest::class);
+        $request->method('getMethod')->willReturn('GET');
+        $request->method('isXmlHttpRequest')->willReturn(false);
+        $request->method('getServer')->willReturn(microtime(true));
+        $request->method('getRequestUri')->willReturn('/muon_profiler/Run/View');
+        $request->method('getFullActionName')->willReturn('muon_profiler_Run_View');
+
+        $store = $this->createMock(RunStore::class);
+        $store->expects(self::never())->method('write');
+
+        $finalizer = $this->finalizerWith($request, $store, ['muon_profiler_run_view']);
+        $finalizer->finalize($this->rawResponse(), RunFinalizer::KIND_PAGE);
     }
 }

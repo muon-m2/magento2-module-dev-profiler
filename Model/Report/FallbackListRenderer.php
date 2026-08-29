@@ -70,9 +70,7 @@ class FallbackListRenderer
             return $lines;
         }
 
-        $classified = $this->resolutions->present(
-            $this->shadows->classify($recorded, (string)($context['theme_path'] ?? ''))
-        );
+        $classified = $this->resolve($recorded, (string)($context['theme_path'] ?? ''));
         $shadowedCount = 0;
         $probeMisses = 0;
         $body = [];
@@ -110,6 +108,31 @@ class FallbackListRenderer
         }
 
         return array_merge([$header, ''], $body);
+    }
+
+    /**
+     * Collapse repeat lookups, classify what is left, and rank the result.
+     *
+     * The order matters for cost, not just tidiness: ShadowResolver stats every candidate directory
+     * for every entry it is given, and about half of a run's entries are repeat lookups of a file
+     * already probed. Collapsing first means each distinct file is classified once.
+     *
+     * @param array<array-key, mixed> $recorded
+     * @param string $themePath
+     * @return list<array<string, mixed>>
+     */
+    private function resolve(array $recorded, string $themePath): array
+    {
+        $collapsed = $this->resolutions->collapseRecorded(array_values($recorded));
+        $classified = $this->shadows->classify(array_column($collapsed, 'entry'), $themePath);
+
+        // classifyOne() rebuilds its result array rather than adding to it, so the counts are
+        // re-attached by position — classify() returns one row per input row, in order.
+        foreach (array_keys($classified) as $index) {
+            $classified[$index]['lookups'] = $collapsed[$index]['lookups'] ?? 1;
+        }
+
+        return $this->resolutions->rank($classified);
     }
 
     /**

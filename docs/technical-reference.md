@@ -1,6 +1,6 @@
 # Muon_DevProfiler — Technical Reference
 
-Module: `Muon_DevProfiler` · Package `muon/module-dev-profiler` 1.4.0 · OSL-3.0
+Module: `Muon_DevProfiler` · Package `muon/module-dev-profiler` 1.5.0 · OSL-3.0
 Requires PHP `~8.3.0 || ~8.4.0 || ~8.5.0`, Magento 2.4.9.
 
 ## Architecture

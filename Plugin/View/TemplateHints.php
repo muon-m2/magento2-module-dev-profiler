@@ -9,6 +9,7 @@ declare(strict_types=1);
 namespace Muon\DevProfiler\Plugin\View;
 
 use Magento\Developer\Helper\Data as DeveloperHelper;
+use Magento\Developer\Model\TemplateEngine\Decorator\DebugHints;
 use Magento\Developer\Model\TemplateEngine\Decorator\DebugHintsFactory;
 use Magento\Framework\App\Http\Context as HttpContext;
 use Magento\Framework\App\RequestInterface;
@@ -107,6 +108,13 @@ class TemplateHints implements ResetAfterRequestInterface
         // a key no ordinary visitor computes. Without this the first hinted response is cached
         // under the clean URL and every subsequent visitor is served red dotted borders and this
         // installation's server-side template paths.
+        // Core's own plugin (Magento_Developer, sortOrder 10) has already wrapped the engine when
+        // dev/debug/template_hints_storefront is on, and this one runs at 100. Wrapping the wrapper
+        // renders two nested hint frames around every block.
+        if ($result instanceof DebugHints) {
+            return $result;
+        }
+
         $this->vary($mode);
 
         return $this->debugHintsFactory->create([

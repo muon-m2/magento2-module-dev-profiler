@@ -4,6 +4,88 @@ All notable changes to `Muon_DevProfiler` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is
 [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] — 2026-08-28
+
+Closes the Low findings from the 2026-08-28 release-readiness audit.
+
+### Security
+
+- **Run files are no longer world-readable.** `create()` and `writeFile()` take the directory's
+  configured mode — 0777 by default, landing as 0755/0644 under the usual umask. The files hold
+  request URIs and statement shapes, and anything that tars `var/` for a backup or a support bundle
+  carried them off the box. Runs are now 0600, the directory 0700, and a `.htaccess` carrying
+  `Require all denied` is written beside them so the store is self-protecting even where the
+  document root is misconfigured to serve `var/`.
+
+- **The ring prunes by age, not only by count.** It shrank only on write, so once profiling stopped,
+  up to `ringSize` documents sat in `var/` indefinitely and the only way to remove them was to
+  remember `muon:profile:clear`. Default retention is 72 hours, via a new `maxAgeHours` `di.xml`
+  argument; `0` restores the old behaviour. The window is enforced on every path that lists runs,
+  not only on write — a window that applies only while profiling is active would leave the runs of
+  someone who profiled once and stopped on disk forever, which is the case that matters most.
+
+### Fixed
+
+- **Runs are written atomically.** `writeFile()` truncates and then writes with no lock, so a reader
+  listing the directory mid-write saw a partial file, caught the decode failure and silently skipped
+  the run — `muon:profile:list --limit=20` quietly returning nineteen. Written to a `.part` name and
+  renamed into place, so a run is either absent or complete.
+
+- **The action-exclusion list is matched case-insensitively.** `Router\Base` sets the controller
+  and action names from the raw URL path segments with case preserved, while `ActionList`
+  lower-cases only for class resolution — so a hand-typed `/muon_profiler/Run/View` routes correctly
+  and reports `muon_profiler_Run_View`, which the strict comparison missed. A consumer's own run was
+  then recorded, evicting an entry from the ring it was opened to read.
+
+- **`loadLastDocument()` no longer returns a static-asset run.** A static run has `is_ajax => false`,
+  so it satisfied the old condition and could be answered as "the last full document" — right after
+  a static rebuild that meant a LESS file's run, whose verdict is `n/a`.
+
+- **`TemplateHints` no longer double-decorates.** Core's own plugin wraps the engine at sortOrder 10
+  when `dev/debug/template_hints_storefront` is on; this one runs at 100 and wrapped the wrapper,
+  rendering two nested hint frames around every block.
+
+- **A failed origin resolution is remembered.** `StatementOrigin` returns null when all thirty
+  captured frames match the skip list, and writing that null back left the `=== null` guard open —
+  so a shape that is consistently slow and lives entirely inside `framework/DB` walked the stack
+  again on every execution over the threshold instead of once.
+
+- **Fallback resolutions are collapsed before they are classified.** `ShadowResolver` stats every
+  candidate directory for every entry it is handed, and Magento resolves the same file more than
+  once per request — reliably twice on a static run. Collapsing afterwards meant paying for those
+  stat calls before discarding them: roughly 1,200–5,000 `is_file()` calls on a real run, about half
+  of them repeats.
+
+### Changed
+
+- **`Magento_PageCache` is no longer required or sequenced.** The cacheable verdict comes from
+  `Framework\View\Layout::isCacheable()`; the only mention of PageCache in the module was a prose
+  comment. A false dependency edge constrains upgrades for nothing.
+
+- **The hard-coded `version` field is gone from `composer.json`.** Releases are tagged, so the field
+  was a second source of truth that drifts the moment a tag is cut without editing it.
+
+- **`method_exists()` replaced with `instanceof HttpInterface`.** Both methods are declared on it,
+  and every response reaching those call sites implements it — the string lookup gave static
+  analysis nothing to narrow.
+
+- **`.gitattributes` keeps `Test/`, `.github/` and `phpmd.xml` out of the Composer dist**, and
+  `composer.json` excludes `Test/` from the production classmap. `docs/` and `CHANGELOG.md`
+  deliberately still ship: this is a developer tool, the reference is the reason to keep it, and the
+  README links to both.
+
+- **CI tests every PHP version the package declares** — 8.3, 8.4 and 8.5 — rather than pinning 8.3
+  while claiming support for a range three times as wide.
+
+- **The README links to the project page**, the changelog and the technical reference.
+
+### Not changed
+
+- **`Model\Store` keeps its name.** The audit is right that it reads as the Magento store entity
+  when it means storage. Renaming it is a breaking change for anything type-hinting `RunStore` —
+  including `Muon_DevProfilerBoard`'s write path — and the supported surface is now
+  `Api\RunReaderInterface`, which carries no such ambiguity. The cost outweighs the clarity gained.
+
 ## [1.4.0] — 2026-08-28
 
 Closes the Medium findings from the 2026-08-28 release-readiness audit.

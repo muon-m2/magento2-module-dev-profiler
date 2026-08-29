@@ -10,8 +10,9 @@ namespace Muon\DevProfiler\Model\Run;
 
 use Magento\Framework\App\Area;
 use Magento\Framework\App\ResponseInterface;
-use Magento\Framework\View\Design\Theme\FlyweightFactory;
+use Magento\Framework\App\Response\HttpInterface as HttpResponseInterface;
 use Magento\Framework\View\DesignInterface;
+use Magento\Framework\View\Design\Theme\FlyweightFactory;
 use Magento\Store\Model\StoreManagerInterface;
 use Muon\DevProfiler\Model\Sql\ValueMasker;
 use Muon\DevProfiler\Model\Store\RunStore;
@@ -86,7 +87,11 @@ class RunFinalizer
             $token = $this->context->token();
             $this->store->write($token, $this->assemble($result));
 
-            if (method_exists($result, 'setHeader')) {
+            // instanceof, not method_exists: both methods are declared on HttpInterface, which
+            // every response reaching here implements — App\Http returns Response\Http, and
+            // StaticResource returns Response\FileInterface, which extends it. A string lookup
+            // gives static analysis nothing to narrow and no guarantee on the call that follows.
+            if ($result instanceof HttpResponseInterface) {
                 $result->setHeader(self::HEADER, $token, true);
             }
         } catch (\Throwable $e) {
@@ -314,7 +319,18 @@ class RunFinalizer
 
         $action = $this->fullActionName();
 
-        return $action !== null && in_array($action, $this->excludedActions, true);
+        if ($action === null) {
+            return false;
+        }
+
+        // Both sides lower-cased. Router\Base sets the controller and action names from the raw URL
+        // path segments with case preserved, while ActionList lower-cases only for class
+        // resolution — so /muon_profiler/Run/View resolves correctly and yields
+        // muon_profiler_Run_View, which a case-sensitive comparison misses. A consumer's own run
+        // then gets recorded and evicts an entry from the ring it was opened to read.
+        $excluded = array_map(static fn (string $name): string => strtolower($name), $this->excludedActions);
+
+        return in_array(strtolower($action), $excluded, true);
     }
 
     /**
@@ -340,8 +356,9 @@ class RunFinalizer
      */
     private function statusCode(ResponseInterface $result): ?int
     {
-        // ResponseInterface does not declare this; the concrete HTTP response does.
-        return method_exists($result, 'getHttpResponseCode')
+        // ResponseInterface does not declare this; HttpInterface does, and every response that
+        // reaches this point implements it.
+        return $result instanceof HttpResponseInterface
             ? (int)$result->getHttpResponseCode()
             : null;
     }
