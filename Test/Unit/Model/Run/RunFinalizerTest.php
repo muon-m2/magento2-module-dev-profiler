@@ -223,6 +223,7 @@ class RunFinalizerTest extends TestCase
     /**
      * @param HttpRequest $request
      * @param RunStore $store
+     * @param list<string> $excluded
      * @return RunFinalizer
      */
     private function finalizerWith(HttpRequest $request, RunStore $store, array $excluded = []): RunFinalizer

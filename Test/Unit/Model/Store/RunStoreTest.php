@@ -259,6 +259,28 @@ class RunStoreTest extends TestCase
         self::assertNotContains($fresh, $this->deleted, 'an hour-old run is not');
     }
 
+    /**
+     * The window has to hold on read as well as on write.
+     *
+     * Age was previously enforced only from prune(), which runs from write(). That makes the
+     * guarantee conditional on profiling still being active — exactly the case where it matters
+     * least. A developer who profiles once and stops is the one left with captured request data on
+     * disk, and nothing they do short of muon:profile:clear removes it.
+     */
+    public function testTheRetentionWindowIsEnforcedWithoutAnyWrite(): void
+    {
+        $now = (int)(microtime(true) * 1000);
+        $old = sprintf('muon/profiler/%d-%s.json', $now - (96 * 3600 * 1000), 'aaaaaaaaaaaa');
+        $fresh = sprintf('muon/profiler/%d-%s.json', $now - (1 * 3600 * 1000), 'bbbbbbbbbbbb');
+
+        $store = $this->store([$old, $fresh]);
+
+        // A pure read. Nothing here writes a run.
+        self::assertSame(1, $store->count(), 'the expired run must not be counted');
+        self::assertContains($old, $this->deleted, 'reading is enough to enforce the window');
+        self::assertNotContains($fresh, $this->deleted);
+    }
+
     public function testAZeroRetentionWindowKeepsEverythingTheRingAllows(): void
     {
         $now = (int)(microtime(true) * 1000);

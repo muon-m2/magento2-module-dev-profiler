@@ -20,7 +20,9 @@ Closes the Low findings from the 2026-08-28 release-readiness audit.
 - **The ring prunes by age, not only by count.** It shrank only on write, so once profiling stopped,
   up to `ringSize` documents sat in `var/` indefinitely and the only way to remove them was to
   remember `muon:profile:clear`. Default retention is 72 hours, via a new `maxAgeHours` `di.xml`
-  argument; `0` restores the old behaviour.
+  argument; `0` restores the old behaviour. The window is enforced on every path that lists runs,
+  not only on write — a window that applies only while profiling is active would leave the runs of
+  someone who profiled once and stopped on disk forever, which is the case that matters most.
 
 ### Fixed
 

@@ -251,6 +251,16 @@ class RunStore implements RunReaderInterface
         $files = array_values(array_filter($found, 'is_string'));
         sort($files, SORT_STRING);
 
+        // Age is enforced here rather than in prune(), because prune() runs only from write(). A
+        // retention window that is only applied while profiling is active is not a retention
+        // window: stop profiling and the last runs — full request URIs, resolved paths, statement
+        // shapes — stay in var/ forever. Every path that can see a run goes through this method, so
+        // enforcing it here means reading is enough to make the window real.
+        foreach ($this->expired($files) as $path) {
+            $this->remove($path);
+            $files = array_values(array_diff($files, [$path]));
+        }
+
         return $files;
     }
 
@@ -261,17 +271,8 @@ class RunStore implements RunReaderInterface
      */
     private function prune(): void
     {
+        // files() has already dropped anything outside the retention window.
         $files = $this->files();
-
-        // By age first. The ring only ever shrank on write, so once profiling stopped, up to
-        // ringSize documents — full request URIs, resolved file paths, statement shapes — sat in
-        // var/ indefinitely, and the only way to remove them was to remember to run
-        // `bin/magento muon:profile:clear`. Retention should not depend on remembering.
-        foreach ($this->expired($files) as $path) {
-            $this->remove($path);
-            $files = array_values(array_diff($files, [$path]));
-        }
-
         $excess = count($files) - max(1, $this->ringSize);
 
         if ($excess <= 0) {
