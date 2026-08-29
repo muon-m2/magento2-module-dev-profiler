@@ -72,6 +72,9 @@ Closes the Low findings from the 2026-08-28 release-readiness audit.
   deliberately still ship: this is a developer tool, the reference is the reason to keep it, and the
   README links to both.
 
+- **CI tests every PHP version the package declares** — 8.3, 8.4 and 8.5 — rather than pinning 8.3
+  while claiming support for a range three times as wide.
+
 - **The README links to the project page**, the changelog and the technical reference.
 
 ### Not changed
