@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Muon DevProfiler — theme fallback and cache forensics for Magento 2</title>
+<meta name="description" content="Headless Magento 2 request profiler: which copy of a template actually won, why a page missed the full-page cache, and which loop issued 47 queries. Developer mode only.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+    <a class="brand" href="./">MUON <span>PROFILER</span></a>
+    <span class="eyebrow">Muon_DevProfiler</span>
+    <nav>
+        <a href="#install">Install</a>
+        <a href="#use">Use</a>
+        <a href="#board">Board</a>
+        <a href="https://github.com/muon-m2/magento2-module-dev-profiler">GitHub</a>
+    </nav>
+</header>
+
+<div class="wrap">
+
+<div class="hero">
+    <p class="eyebrow">Magento 2 · developer mode only</p>
+    <h1>Which copy of that template actually won?</h1>
+    <p class="lede">
+        A headless request profiler for Magento 2. It records theme-fallback resolutions, full-page-cache
+        verdicts, layout opt-outs and SQL shapes for real storefront requests, then answers from the
+        command line — no toolbar, no injected markup, nothing in the response body.
+    </p>
+    <div class="pills">
+        <span class="pill">OSL-3.0</span>
+        <span class="pill">Magento 2.4.9</span>
+        <span class="pill">PHP 8.3 – 8.5</span>
+        <span class="pill">no database tables</span>
+        <span class="pill">no cron</span>
+    </div>
+</div>
+
+<section id="why">
+    <h2>The questions it answers</h2>
+    <p class="section-note">Each one is normally answered by guessing, then by editing a file to see what changes.</p>
+    <div class="cards">
+        <div class="card">
+            <h3>Which file won the fallback?</h3>
+            <p>Every resolution the request made — type, module, area, locale, theme — and the copies that
+               lost. A theme override that silently never applied stops being invisible.</p>
+        </div>
+        <div class="card">
+            <h3>Why was this page not cached?</h3>
+            <p>A hit, a miss, or uncacheable with the block that caused it named. Layout never runs on a
+               cache hit, which is the fact the verdict rests on.</p>
+        </div>
+        <div class="card">
+            <h3>What issued 47 queries?</h3>
+            <p>Statements folded by shape, so a loop appears once with <code>×47</code> and the
+               <code>file:line</code> that produced it — not as 47 unrelated queries.</p>
+        </div>
+    </div>
+</section>
+
+<section id="verdicts">
+    <h2>The verdict vocabulary</h2>
+    <p class="section-note">Four states, and the tool refuses to guess between them.</p>
+    <div class="chips">
+        <span class="chip v-hit">hit</span>
+        <span class="chip v-miss">miss</span>
+        <span class="chip v-bad">uncacheable</span>
+        <span class="chip v-none">n/a</span>
+    </div>
+    <p>
+        <code>n/a</code> is not padding. A static asset has no layout and no page-cache verdict to give;
+        reporting <code>hit</code> because layout never generated would be true of the mechanism and
+        meaningless to the reader.
+    </p>
+</section>
+
+<section id="install">
+    <h2>Install</h2>
+    <p class="section-note">Public repository, no authentication.</p>
+<pre><span class="c"># composer.json: add the repository, then require it</span>
+composer config repositories.muon-dev-profiler vcs \
+    https://github.com/muon-m2/magento2-module-dev-profiler
+composer require --dev muon/module-dev-profiler
+
+bin/magento module:enable Muon_DevProfiler
+bin/magento setup:upgrade</pre>
+    <p>
+        It records nothing outside developer mode. The gate is compiled into the code path — there is no
+        configuration field, no header and no query parameter that can switch it on, and it fails closed
+        on an installation that cannot report its own mode.
+    </p>
+</section>
+
+<section id="use">
+    <h2>Use</h2>
+    <p class="section-note">Load a page in the browser, then ask about it.</p>
+<pre>bin/magento muon:profile:show                    <span class="c"># the last full page request</span>
+bin/magento muon:profile:show 7f3a9c2e1b4d       <span class="c"># one specific run</span>
+bin/magento muon:profile:show --shadowed-only    <span class="c"># files that exist in more than one place</span>
+bin/magento muon:profile:show --sql              <span class="c"># statement shapes, findings first</span>
+bin/magento muon:profile:show --sql --nplus1=3   <span class="c"># stricter</span>
+bin/magento muon:profile:list                    <span class="c"># recent runs, newest first</span>
+bin/magento muon:profile:clear                   <span class="c"># empty the ring</span></pre>
+    <h3>Thresholds are applied when you read</h3>
+    <p>
+        Not when the page ran. The same capture can be re-examined at a different sensitivity without
+        reloading anything, which matters when the interesting request is hard to reproduce.
+    </p>
+</section>
+
+<section id="records">
+    <h2>What it records</h2>
+    <div class="scroll">
+        <table>
+            <caption>One JSON document per request, in a 50-run ring under <code>var/muon/profiler/</code></caption>
+            <thead><tr><th scope="col">Area</th><th scope="col">Recorded</th></tr></thead>
+            <tbody>
+                <tr><td>Request</td><td>method, URL, full action name, status, duration, peak memory, AJAX flag, page vs static</td></tr>
+                <tr><td>Context</td><td>store code, store id, website id, resolved theme path</td></tr>
+                <tr><td>Layout</td><td>whether layout generated, <code>isCacheable()</code>, handles, blocks declaring <code>cacheable="false"</code>, constructor opt-outs with origin</td></tr>
+                <tr><td>Fallback</td><td>every resolution: type, file, module, area, locale, theme, resolved path</td></tr>
+                <tr><td>Queries</td><td>statement <em>shape</em>, execution count, timings, masked binds, calling <code>file:line</code></td></tr>
+            </tbody>
+        </table>
+    </div>
+    <h3>What it does not record</h3>
+    <p>
+        Query <em>results</em> are never captured, and since 1.4.0 the statement text is stored as its
+        normalised shape rather than verbatim — Magento inlines values into SQL at least as often as it
+        binds them, so masking only the bound parameters would have left the rest in the clear. Bound
+        values are masked by key and by shape; numeric ids are deliberately kept, because they are the
+        evidence that separates an N+1 from a plain duplicate.
+    </p>
+</section>
+
+<section id="board">
+    <h2>Prefer to read it in a browser?</h2>
+    <div class="sibling">
+        <div>
+            <strong>Muon_DevProfilerBoard</strong>
+            <p>
+                The same captures, rendered as a live web board: a polling ledger of recent runs, verdict
+                banners, SQL and fallback panels, and a diff between any two runs. It reads through this
+                module's analysis classes, so the board and the CLI can never disagree about the same token.
+            </p>
+        </div>
+        <a class="btn" href="https://muon-m2.github.io/magento2-module-dev-profiler-board/">The board →</a>
+    </div>
+</section>
+
+<footer>
+    <span><a href="https://github.com/muon-m2/magento2-module-dev-profiler">Source</a></span>
+    <span><a href="https://github.com/muon-m2/magento2-module-dev-profiler/releases">Releases</a></span>
+    <span><a href="https://github.com/muon-m2/magento2-module-dev-profiler/blob/main/CHANGELOG.md">Changelog</a></span>
+    <span><a href="https://github.com/muon-m2/magento2-module-dev-profiler/blob/main/docs/technical-reference.md">Technical reference</a></span>
+    <span><a href="https://muon-m2.github.io/magento2-module-dev-profiler-board/">Muon_DevProfilerBoard</a></span>
+    <span>OSL-3.0</span>
+</footer>
+
+</div>
+</body>
+</html>

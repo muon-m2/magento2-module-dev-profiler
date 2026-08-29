@@ -1,0 +1,169 @@
+/*
+ * Lifted from the board's own stylesheet so the site and the tool read as one product.
+ *
+ * The board's colour discipline is kept intact: --v-hit / --v-miss / --v-bad / --v-none mean a
+ * cache verdict and are used for nothing else, and --accent is reserved for interaction, so a link
+ * can never be mistaken for a finding.
+ */
+:root {
+    --ground: #F7F8FA;
+    --panel: #FFFFFF;
+    --panel-2: #F1F3F6;
+    --rule: #DFE3E9;
+    --ink: #1C232B;
+    --ink-dim: #5A6673;
+    --ink-faint: #626D7A;
+    --v-hit: #157A64;
+    --v-miss: #8A5E10;
+    --v-bad: #C0392F;
+    --v-none: #5A6674;
+    --accent: #5B45D6;
+    --accent-soft: rgba(91, 69, 214, .08);
+    --mono: ui-monospace, "JetBrains Mono", "Cascadia Code", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+code, kbd, .mono { font-family: var(--mono); font-size: .86em; }
+code {
+    background: var(--panel-2);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: .06em .32em;
+}
+
+.sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* ── top bar: the board's, so the site and the tool feel continuous ───────── */
+.topbar {
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 20px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--rule);
+    position: sticky; top: 0; z-index: 5;
+}
+.brand {
+    font-family: var(--mono); font-size: .86rem; font-weight: 600;
+    letter-spacing: .02em; color: var(--ink); text-decoration: none;
+}
+.brand span { color: var(--ink-faint); font-weight: 400; }
+.eyebrow {
+    font-family: var(--sans); font-size: .66rem; font-weight: 600;
+    letter-spacing: .09em; text-transform: uppercase; color: var(--ink-faint);
+}
+.topbar nav { margin-left: auto; display: flex; gap: 16px; font-size: .82rem; }
+
+.wrap { max-width: 60rem; margin: 0 auto; padding: 0 20px 96px; }
+
+/* ── hero ────────────────────────────────────────────────────────────────── */
+.hero { padding: 56px 0 40px; border-bottom: 1px solid var(--rule); }
+h1 {
+    margin: 10px 0 14px;
+    font-size: clamp(1.9rem, 4.4vw, 2.7rem);
+    line-height: 1.12; letter-spacing: -.02em; text-wrap: balance;
+}
+.lede { margin: 0; font-size: 1.06rem; color: var(--ink-dim); max-width: 62ch; }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.pill {
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .04em;
+    padding: .28em .6em; border-radius: 2px;
+    background: var(--panel); border: 1px solid var(--rule); color: var(--ink-dim);
+}
+
+/* ── sections ────────────────────────────────────────────────────────────── */
+section { padding: 44px 0 0; }
+h2 {
+    margin: 0 0 6px; font-size: 1.32rem; letter-spacing: -.01em;
+}
+h3 { margin: 26px 0 6px; font-size: .96rem; }
+.section-note { margin: 0 0 18px; color: var(--ink-faint); font-size: .88rem; }
+p { max-width: 68ch; }
+
+pre {
+    margin: 0;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-family: var(--mono); font-size: .82rem; line-height: 1.7;
+}
+pre .c { color: var(--ink-faint); }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 14px; }
+.card {
+    background: var(--panel); border: 1px solid var(--rule); border-radius: 2px;
+    padding: 16px 18px;
+}
+.card h3 { margin: 0 0 6px; font-size: .92rem; }
+.card p { margin: 0; font-size: .88rem; color: var(--ink-dim); }
+
+/* ── verdict chips: the tool's own vocabulary, same colours, same meaning ─── */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
+.chip {
+    font-family: var(--mono); font-size: .68rem; font-weight: 600;
+    letter-spacing: .06em; text-transform: uppercase;
+    padding: .22em .55em; border-radius: 2px;
+    border: 1px solid currentColor;
+}
+.v-hit { color: var(--v-hit); }
+.v-miss { color: var(--v-miss); }
+.v-bad { color: var(--v-bad); }
+.v-none { color: var(--v-none); }
+
+.scroll { overflow-x: auto; border: 1px solid var(--rule); border-radius: 2px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: .86rem; min-width: 30rem; }
+caption { text-align: left; padding: 12px 16px 2px; color: var(--ink-faint); font-size: .8rem; }
+th, td { text-align: left; padding: 9px 16px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+thead th {
+    font-size: .68rem; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-faint); background: var(--panel-2);
+}
+tbody tr:last-child td { border-bottom: none; }
+td.n { font-variant-numeric: tabular-nums; }
+
+/* ── the sibling module ──────────────────────────────────────────────────── */
+.sibling {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 16px;
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+    border-radius: 2px; padding: 18px 20px; margin-top: 12px;
+}
+.sibling div { flex: 1 1 20rem; }
+.sibling p { margin: 4px 0 0; font-size: .9rem; color: var(--ink-dim); }
+.btn {
+    display: inline-block; text-decoration: none;
+    font-family: var(--mono); font-size: .78rem; font-weight: 600;
+    padding: .5em 1em; border-radius: 2px;
+    background: var(--accent); color: #fff; border: 1px solid var(--accent);
+}
+.btn:hover { text-decoration: none; filter: brightness(1.08); }
+
+footer {
+    margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--rule);
+    color: var(--ink-faint); font-size: .82rem;
+    display: flex; flex-wrap: wrap; gap: 6px 18px;
+}
+
+@media (max-width: 600px) {
+    .topbar { flex-wrap: wrap; gap: 8px 12px; }
+    .topbar nav { margin-left: 0; width: 100%; }
+}
