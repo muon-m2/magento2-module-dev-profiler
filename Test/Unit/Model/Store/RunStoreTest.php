@@ -39,8 +39,6 @@ class RunStoreTest extends TestCase
     {
         /** @var WriteInterface&MockObject $directory */
         $directory = $this->createMock(WriteInterface::class);
-        $unusedDirectory = $directory;
-
         $directory->method('search')->willReturnCallback(fn (): array => array_keys($this->disk) ?: $files);
         $directory->method('readFile')->willReturnCallback(fn (string $p): string => $this->disk[$p] ?? '');
         $directory->method('writeFile')->willReturnCallback(function (string $p, string $c): int {

@@ -68,6 +68,12 @@ Closes the Medium findings from the 2026-08-28 release-readiness audit.
   `DB\Logger\LoggerProxy`, the class this module plugs, implements it for the same reason: in a
   long-lived process one request's recording would otherwise be attributed to the next.
 
+- **`Test/Unit/Stub/generated.php`.** `DebugHintsFactory` has no source file — Magento generates it
+  into `generated/code` on demand — so a test that doubles it passes on a full install and errors in
+  CI with "Class or interface does not exist". The stub is declared only when the real class is
+  absent, so the tests run everywhere rather than being skipped in CI, which would put them straight
+  back into the category this release just took them out of.
+
 - **Tests for everything above, plus the three classes that had none**: `SqlListRenderer` (reached by
   `--sql`, and previously never executed by any test), the three console commands, and
   `FallbackRecorder`, whose seven-argument signature is a branch per optional argument.

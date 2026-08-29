@@ -8,6 +8,8 @@ declare(strict_types=1);
 
 namespace Muon\DevProfiler\Test\Unit\Plugin\View;
 
+require_once __DIR__ . '/../../Stub/generated.php';
+
 use Magento\Developer\Helper\Data as DeveloperHelper;
 use Magento\Developer\Model\TemplateEngine\Decorator\DebugHints;
 use Magento\Developer\Model\TemplateEngine\Decorator\DebugHintsFactory;
