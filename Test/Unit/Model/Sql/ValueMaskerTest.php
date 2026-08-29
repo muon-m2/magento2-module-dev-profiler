@@ -130,4 +130,55 @@ class ValueMaskerTest extends TestCase
         self::assertLessThanOrEqual(200 + strlen('…'), strlen((string)$masked));
         self::assertStringEndsWith('…', (string)$masked);
     }
+
+    /**
+     * Ordinary PII no shape rule can recognise: "Alice" is five letters like any other five.
+     * The key has to carry the decision, so the key list has to be complete.
+     */
+    public function testOrdinaryPersonalDataIsMaskedByKeyName(): void
+    {
+        $masked = (new ValueMasker())->maskBinds([
+            'firstname' => 'Alice',
+            'lastname' => 'Bergstrom',
+            'company' => 'Northwind Trading',
+            'city' => 'Rotterdam',
+            'country_id' => 'NL',
+            'coupon_code' => 'SUMMER-40',
+        ]);
+
+        foreach ($masked as $key => $value) {
+            self::assertSame('••••••', $value, $key . ' was stored in the clear');
+        }
+    }
+
+    public function testAPasswordHashAndAJwtAreMaskedByShape(): void
+    {
+        $masker = new ValueMasker();
+
+        // Magento's password hash is hash:salt:version — the colons used to defeat the token rule.
+        $hash = str_repeat('a', 64) . ':' . str_repeat('b', 32) . ':1';
+        $jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27u';
+
+        self::assertStringContainsString('••••••', (string)$masker->maskBinds([0 => $hash])[0]);
+        self::assertStringContainsString('••••••', (string)$masker->maskBinds([0 => $jwt])[0]);
+    }
+
+    /**
+     * The counterweight: over-masking destroys the evidence that separates an N+1 from a duplicate,
+     * so the widened rules must not start swallowing ordinary identifiers.
+     */
+    public function testIdentifiersAndShortValuesStillPassThrough(): void
+    {
+        $masked = (new ValueMasker())->maskBinds([
+            'entity_id' => 14092,
+            'sku' => 'MUON-20-00264',
+            'identifier' => 'header_panel',
+            'store_id' => 7,
+        ]);
+
+        self::assertSame(14092, $masked['entity_id']);
+        self::assertSame('MUON-20-00264', $masked['sku']);
+        self::assertSame('header_panel', $masked['identifier']);
+        self::assertSame(7, $masked['store_id']);
+    }
 }

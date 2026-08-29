@@ -64,7 +64,7 @@ class FallbackListRenderer
                 $lines[] = '  This request was served from the full page cache, so Magento resolved';
                 $lines[] = '  no files and loaded no theme. That is why there is nothing here.';
                 $lines[] = '  For fallback data, profile a cold request:';
-                $lines[] = '      make profile-clear && bin/magento cache:flush   then reload the page';
+                $lines[] = '      bin/magento muon:profile:clear && bin/magento cache:flush   then reload the page';
             }
 
             return $lines;

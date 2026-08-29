@@ -30,7 +30,12 @@ class ValueMasker
 {
     private const SENSITIVE_KEY = '/pass|secret|key|token|salt|private|credential|licen[cs]e'
         . '|signature|cipher|hash|auth|session|cookie|email|mail|phone|telephone|postcode|zip'
-        . '|street|dob|tax|vat|iban|card/i';
+        . '|street|dob|tax|vat|iban|card'
+        // Names, addresses and the rest of the ordinary PII a storefront binds constantly. These
+        // are not secrets and no shape rule can recognise them: "Alice" is five letters that look
+        // like any other five letters, which is exactly why the key has to carry the decision.
+        . '|firstname|lastname|middlename|fullname|surname|company|city|region|country|province'
+        . '|county|address|birth|gender|prefix|suffix|coupon|discount_code|vat_id|fax/i';
 
     private const EMAIL = '/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/';
 
@@ -120,7 +125,11 @@ class ValueMasker
             return self::MASK;
         }
 
-        if (strlen($value) >= self::TOKENISH_MIN_LENGTH && preg_match('/^[A-Za-z0-9+\/=_-]+$/', $value)) {
+        // The character class admits ':' and '.' as well as base64's alphabet, so two shapes that
+        // used to slip through are caught: a Magento password hash is `hash:salt:version`, and a
+        // JWT is three dot-separated segments. Both are long, both are credentials, and both failed
+        // the old class on one punctuation character.
+        if (strlen($value) >= self::TOKENISH_MIN_LENGTH && preg_match('/^[A-Za-z0-9+\/=_.:-]+$/', $value)) {
             return substr($value, 0, 4) . self::MASK;
         }
 

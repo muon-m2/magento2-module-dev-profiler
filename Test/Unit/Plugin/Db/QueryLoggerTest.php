@@ -91,7 +91,7 @@ class QueryLoggerTest extends TestCase
     {
         $queries = $this->context->meta('queries', []);
 
-        return is_array($queries) ? $queries : [];
+        return is_array($queries) ? array_values($queries) : [];
     }
 
     /**
@@ -104,6 +104,8 @@ class QueryLoggerTest extends TestCase
     public function testReEntrantLoggingDoesNotRecurse(): void
     {
         $depth = 0;
+
+        /** @var QueryLogger|null $logger */
         $logger = null;
 
         $reenter = function () use (&$logger, &$depth): void {

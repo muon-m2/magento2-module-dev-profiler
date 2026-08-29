@@ -190,6 +190,10 @@ class QueryAnalyzerTest extends TestCase
 
     public function testMalformedGroupsAreSkippedRatherThanFatal(): void
     {
+        // Deliberately the wrong shape: a stored run is JSON decoded from disk and may have been
+        // written by an older collector, so classify() must survive junk rather than fatal. The
+        // type violation is the assertion.
+        // @phpstan-ignore-next-line argument.type
         $out = $this->analyzer->classify([$this->group(), 'nonsense', 42]);
 
         self::assertSame(1, $out['shapes']);

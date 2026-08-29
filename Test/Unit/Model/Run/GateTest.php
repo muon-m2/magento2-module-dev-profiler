@@ -92,6 +92,48 @@ class GateTest extends TestCase
     }
 
     /**
+     * An emulated area is borrowed for the duration of a closure, not the process.
+     *
+     * Widget\FilterEmulate, PageBuilder's DesignLoader and Email\Filter all emulate 'frontend' and
+     * restore afterwards. Latching a yes from one arms the collectors for the rest of an admin
+     * request or a cron process, where RunFinalizer never fires — so nothing is written, nothing is
+     * freed, and the recorder grows to the end of the process.
+     */
+    public function testAYesFromAnEmulatedAreaIsNotRemembered(): void
+    {
+        /** @var State&\PHPUnit\Framework\MockObject\MockObject $state */
+        $state = $this->createMock(State::class);
+        $state->method('getMode')->willReturn(State::MODE_DEVELOPER);
+        $state->method('getAreaCode')->willReturnOnConsecutiveCalls(
+            Area::AREA_FRONTEND,
+            Area::AREA_FRONTEND,
+            Area::AREA_ADMINHTML,
+            Area::AREA_ADMINHTML
+        );
+        $state->method('isAreaCodeEmulated')->willReturnOnConsecutiveCalls(true, false);
+
+        $gate = new Gate($state);
+
+        self::assertTrue($gate->isProfiled(), 'inside the emulation the answer is yes');
+        self::assertFalse($gate->isDecided(), 'but a borrowed area must not settle the answer');
+        self::assertFalse($gate->isProfiled(), 'once restored, the real area answers');
+    }
+
+    public function testAYesFromARealAreaIsRemembered(): void
+    {
+        /** @var State&\PHPUnit\Framework\MockObject\MockObject $state */
+        $state = $this->createMock(State::class);
+        $state->method('getMode')->willReturn(State::MODE_DEVELOPER);
+        $state->method('getAreaCode')->willReturn(Area::AREA_FRONTEND);
+        $state->method('isAreaCodeEmulated')->willReturn(false);
+
+        $gate = new Gate($state);
+
+        self::assertTrue($gate->isProfiled());
+        self::assertTrue($gate->isDecided());
+    }
+
+    /**
      * The other regression, and the more expensive one.
      *
      * getAreaCode() throws when no area is set, and bin/magento never sets one — so asking it

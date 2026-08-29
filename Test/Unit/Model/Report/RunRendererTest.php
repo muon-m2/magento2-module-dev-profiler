@@ -189,7 +189,7 @@ class RunRendererTest extends TestCase
         ])));
 
         self::assertStringContainsString('served from the full page cache', $out);
-        self::assertStringContainsString('make profile-clear', $out);
+        self::assertStringContainsString('bin/magento muon:profile:clear', $out);
     }
 
     public function testAnEmptyPageRunThatWasNotAHitGetsNoMisleadingHint(): void

@@ -13,6 +13,7 @@ use Magento\Framework\App\ResponseInterface;
 use Magento\Framework\View\Design\Theme\FlyweightFactory;
 use Magento\Framework\View\DesignInterface;
 use Magento\Store\Model\StoreManagerInterface;
+use Muon\DevProfiler\Model\Sql\ValueMasker;
 use Muon\DevProfiler\Model\Store\RunStore;
 use Psr\Log\LoggerInterface;
 
@@ -28,6 +29,8 @@ use Psr\Log\LoggerInterface;
  * **This class never touches the response body.** Only a header is added. That is the module's
  * central safety property: appending markup here would be cached by Varnish or any CDN, which sit
  * downstream of PHP, and served to shoppers. Keep it that way.
+ *
+ * @api
  */
 class RunFinalizer
 {
@@ -47,6 +50,7 @@ class RunFinalizer
      * @param \Magento\Framework\View\DesignInterface $design
      * @param \Magento\Framework\View\Design\Theme\FlyweightFactory $themeFactory
      * @param \Psr\Log\LoggerInterface $logger
+     * @param \Muon\DevProfiler\Model\Sql\ValueMasker $masker
      * @param list<string> $excludedActions Full action names whose runs are never recorded.
      */
     public function __construct(
@@ -57,6 +61,7 @@ class RunFinalizer
         private readonly DesignInterface $design,
         private readonly FlyweightFactory $themeFactory,
         private readonly LoggerInterface $logger,
+        private readonly ValueMasker $masker,
         private readonly array $excludedActions = []
     ) {
     }
@@ -105,7 +110,7 @@ class RunFinalizer
             'captured_at' => gmdate('c'),
             'request' => [
                 'method' => (string)$this->request->getMethod(),
-                'url' => (string)$this->request->getRequestUri(),
+                'url' => $this->requestUrl(),
                 'full_action' => $this->fullActionName(),
                 'status' => $this->statusCode($result),
                 'is_ajax' => $this->request->isXmlHttpRequest(),
@@ -129,6 +134,45 @@ class RunFinalizer
                 'queries' => $this->context->truncated('queries'),
             ],
         ];
+    }
+
+    /**
+     * The request URI with sensitive query values masked.
+     *
+     * getRequestUri() returns the query string verbatim, and Magento puts single-use credentials
+     * in it: customer/account/createPassword carries `token`, Confirm carries `key`, and both are
+     * enough to take over an account. A search page carries whatever the visitor typed. None of
+     * that should sit in a file on disk for the next fifty requests.
+     *
+     * The path is kept whole — it is the thing being profiled. Only the query is filtered, and it
+     * is filtered by ValueMasker, so there is one definition of "sensitive" rather than a second
+     * list here that drifts from the first.
+     *
+     * @return string
+     */
+    private function requestUrl(): string
+    {
+        $uri = (string)$this->request->getRequestUri();
+        $split = strpos($uri, '?');
+
+        if ($split === false) {
+            return $uri;
+        }
+
+        $path = substr($uri, 0, $split);
+        $query = substr($uri, $split + 1);
+
+        if ($query === '') {
+            return $path;
+        }
+
+        parse_str($query, $params);
+
+        if ($params === []) {
+            return $path;
+        }
+
+        return $path . '?' . http_build_query($this->masker->maskBinds($params));
     }
 
     /**

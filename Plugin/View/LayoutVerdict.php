@@ -41,13 +41,11 @@ class LayoutVerdict
      * Note that layout actually ran, and record the handles in play.
      *
      * @param \Magento\Framework\View\Layout $subject
-     * @param callable $proceed
+     * @param mixed $result
      * @return mixed
      */
-    public function aroundGenerateXml(Layout $subject, callable $proceed): mixed
+    public function afterGenerateXml(Layout $subject, mixed $result): mixed
     {
-        $result = $proceed();
-
         if (!$this->gate->isProfiled()) {
             return $result;
         }
@@ -69,13 +67,11 @@ class LayoutVerdict
      * Record the cacheable verdict and everything that could account for it.
      *
      * @param \Magento\Framework\View\Layout $subject
-     * @param callable $proceed
+     * @param mixed $result
      * @return mixed
      */
-    public function aroundGenerateElements(Layout $subject, callable $proceed): mixed
+    public function afterGenerateElements(Layout $subject, mixed $result): mixed
     {
-        $result = $proceed();
-
         if (!$this->gate->isProfiled()) {
             return $result;
         }
@@ -95,7 +91,8 @@ class LayoutVerdict
      * Find the declarations that opt this page out of full page caching.
      *
      * The xpath deliberately matches Magento's own in Layout::isCacheable() — `//block` carrying
-     * cacheable="false" — so the list and the verdict cannot disagree.
+     * cacheable="false" — so the list and the verdict cannot disagree, and it reads the same tree
+     * through the same accessor.
      *
      * @param \Magento\Framework\View\Layout $subject
      * @return void
@@ -103,7 +100,22 @@ class LayoutVerdict
     private function recordOptOuts(Layout $subject): void
     {
         try {
-            $xml = $subject->getUpdate()->asSimplexml();
+            // getNode(), not getUpdate()->asSimplexml(). Merge::asSimplexml() caches nothing: each
+            // call re-implodes every merged layout fragment and re-parses the result, measured at
+            // 0.8ms for a 100KB merged layout and 8.7ms at 800KB. generateXml() has already built
+            // that tree and handed it to setXml(), so this is the same document for the cost of a
+            // property read — and it is the tree Layout::isCacheable() itself consults, which is the
+            // one this list has to agree with. It also runs inside the request whose duration_ms
+            // the profiler reports, so paying for it twice inflated the number being measured.
+            //
+            // getNode() rather than getXml(): Simplexml\Config::getXml() is protected, getNode()
+            // is its public accessor and returns false when no tree has been set.
+            $xml = $subject->getNode();
+
+            if (!$xml instanceof \Magento\Framework\Simplexml\Element) {
+                return;
+            }
+
             $nodes = $xml->xpath('//block[@cacheable="false"]') ?: [];
         } catch (\Throwable) {
             // Layout XML that cannot be re-read is not worth failing a page render over.

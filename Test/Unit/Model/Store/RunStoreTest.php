@@ -23,8 +23,6 @@ use Psr\Log\LoggerInterface;
 #[AllowMockObjectsWithoutExpectations]
 class RunStoreTest extends TestCase
 {
-    /** @var WriteInterface&MockObject */
-    private WriteInterface $directory;
 
     /** @var array<string, string> */
     private array $disk = [];
@@ -41,8 +39,6 @@ class RunStoreTest extends TestCase
     {
         /** @var WriteInterface&MockObject $directory */
         $directory = $this->createMock(WriteInterface::class);
-        $this->directory = $directory;
-
         $directory->method('search')->willReturnCallback(fn (): array => array_keys($this->disk) ?: $files);
         $directory->method('readFile')->willReturnCallback(fn (string $p): string => $this->disk[$p] ?? '');
         $directory->method('writeFile')->willReturnCallback(function (string $p, string $c): int {

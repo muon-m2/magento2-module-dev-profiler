@@ -26,6 +26,8 @@ namespace Muon\DevProfiler\Model\Analysis;
  * than guess, the distinction is drawn from the strongest available evidence — a parameterised
  * statement carrying binds is treated as varying, and one carrying none is not — and the result
  * records which basis was used, so a reader knows how much to trust it.
+ *
+ * @api
  */
 class QueryAnalyzer
 {

@@ -14,7 +14,7 @@ theme the request resolved. On a multi-theme install that question costs hours: 
 in the wrong theme is invisible, because the site behaves exactly as if it were never written.
 
 ```
-$ make profile args="--shadowed-only"
+$ bin/magento muon:profile:show --shadowed-only
 
   css/theme/abstracts/_tokens-generated.less
     won       app/design/frontend/Muon/cosmic-custom/web/css/theme/abstracts/_tokens-generated.less
@@ -26,7 +26,7 @@ $ make profile args="--shadowed-only"
 ```bash
 bin/magento module:enable Muon_DevProfiler
 bin/magento setup:upgrade
-bin/magento setup:di:compile      # recommended, not required — see note below
+bin/magento setup:di:compile  # recommended, not required — see note below
 bin/magento cache:flush
 ```
 
@@ -34,16 +34,16 @@ The module declares no schema, so `setup:upgrade` makes no database change. It w
 without compiled DI; 1.0.0 did not, and took the storefront down when `generated/` was empty.
 
 **Developer mode is required.** There is no configuration flag to enable it elsewhere; that is
-deliberate. If `make profile` reports "No runs recorded yet", confirm what the *web* request runs
+deliberate. If `bin/magento muon:profile:show` reports "No runs recorded yet", confirm what the *web* request runs
 as — it is set by `MAGE_MODE` in the FastCGI params and may differ from what `bin/magento
 deploy:mode:show` reports for the CLI.
 
 ## Finding N+1 queries
 
 ```bash
-make profile args="--sql"                          # statement shapes, findings first
-make profile args="--sql --nplus1=3"               # stricter
-make profile args="--sql --slow-query=10"          # everything over 10ms
+bin/magento muon:profile:show --sql                  # statement shapes, findings first
+bin/magento muon:profile:show --sql --nplus1=3       # stricter
+bin/magento muon:profile:show --sql --slow-query=10  # everything over 10ms
 ```
 
 Statements are grouped by shape, so a loop issuing 50 lookups appears once with `x50` and the call
@@ -59,16 +59,16 @@ duplicate.
 ## Use
 
 ```bash
-make profile                          # the last full page request
-make profile t=7f3a9c2e1b4d           # one specific run
-make profile args="--shadowed-only"   # only files that exist in more than one place
-make profile args="--fallback=tokens" # only files whose name matches
-make profile args="--any"             # include AJAX and static-asset runs
-make profile-list                     # recent runs, newest first
-make profile-clear                    # empty the ring
+bin/magento muon:profile:show                    # the last full page request
+bin/magento muon:profile:show 7f3a9c2e1b4d       # one specific run
+bin/magento muon:profile:show --shadowed-only    # only files that exist in more than one place
+bin/magento muon:profile:show --fallback=tokens  # only files whose name matches
+bin/magento muon:profile:show --any              # include AJAX and static-asset runs
+bin/magento muon:profile:list                    # recent runs, newest first
+bin/magento muon:profile:clear                   # empty the ring
 ```
 
-`make profile` with no argument returns the last **full document** request, because a page fires
+`bin/magento muon:profile:show` with no argument returns the last **full document** request, because a page fires
 customer-section XHRs immediately behind it and the newest run is almost never the page you loaded.
 
 ### Template hints, for your browser only
@@ -90,7 +90,7 @@ gate.
 
 1. A table write would happen inside the request being profiled and would contaminate a future SQL
    collector with the profiler's own `INSERT`.
-2. Files survive `make flush` and `make dev-refresh` — run constantly, often mid-debug.
+2. Files survive `bin/magento cache:flush` and `bin/magento setup:upgrade` — run constantly, often mid-debug.
 3. The JSON is directly readable with `grep`; the CLI is a convenience, not a dependency.
 
 ## What it records

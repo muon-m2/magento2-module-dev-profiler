@@ -9,6 +9,7 @@ declare(strict_types=1);
 namespace Muon\DevProfiler\Plugin\Db;
 
 use Magento\Framework\DB\LoggerInterface;
+use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
 use Muon\DevProfiler\Model\Run\Gate;
 use Muon\DevProfiler\Model\Run\RunContext;
 use Muon\DevProfiler\Model\Sql\QueryFingerprint;
@@ -44,7 +45,7 @@ use Muon\DevProfiler\Model\Sql\ValueMasker;
  * per execution. A page issuing 213 statements holds ~58 entries, and an N+1 loop of 400 costs one
  * map update each instead of 400 array pushes.
  */
-class QueryLogger
+class QueryLogger implements ResetAfterRequestInterface
 {
     /**
      * A statement slower than this is worth a stack walk on its own.
@@ -309,5 +310,24 @@ class QueryLogger
         } finally {
             $this->busy = false;
         }
+    }
+
+    /**
+     * Clear per-request state so a long-running process does not carry it into the next request.
+     *
+     * $groups is the whole SQL capture. Leaving it would fold the next request's statements into this
+     * one's and grow without bound.
+     *
+     * @return void
+     * @SuppressWarnings(PHPMD.CamelCaseMethodName) The name is fixed by ResetAfterRequestInterface.
+     */
+    public function _resetState(): void
+    {
+        $this->busy = false;
+        $this->startedAt = null;
+        $this->active = null;
+        $this->groups = [];
+        $this->shapeChecksums = [];
+        $this->registered = false;
     }
 }

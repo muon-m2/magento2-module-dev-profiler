@@ -12,6 +12,7 @@ use Magento\Framework\App\Filesystem\DirectoryList;
 use Magento\Framework\Filesystem;
 use Magento\Framework\Filesystem\Directory\WriteInterface;
 use Magento\Framework\Serialize\Serializer\Json;
+use Muon\DevProfiler\Api\RunReaderInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -23,7 +24,7 @@ use Psr\Log\LoggerInterface;
  *  1. A table write would happen inside the request being profiled. The v2 SQL collector would then
  *     report the profiler's own INSERT as part of the page — the tool contaminating its own
  *     measurement.
- *  2. `make dev-refresh` flushes the cache. A cache-backed store would lose every run at exactly
+ *  2. `bin/magento setup:upgrade` flushes the cache. A cache-backed store would lose every run at exactly
  *     the moment somebody runs the refresh they were in the middle of debugging.
  *  3. The file is legible on its own. Reading a run does not require this module's CLI, or any
  *     Magento bootstrap at all.
@@ -31,7 +32,7 @@ use Psr\Log\LoggerInterface;
  * Retention is a ring, not a schedule: the oldest files are dropped as new ones arrive, so there is
  * no cron job to install and nothing to prune on a timer.
  */
-class RunStore
+class RunStore implements RunReaderInterface
 {
     /**
      * Relative to var/. Kept shallow so the directory is obvious to anyone who finds it.
@@ -135,7 +136,7 @@ class RunStore
      * The most recent run that was a full HTML document.
      *
      * A storefront page fires customer-section XHRs immediately behind it, so the newest run is
-     * usually not the page you just loaded. This is what `make profile` calls with no argument,
+     * usually not the page you just loaded. This is what `bin/magento muon:profile:show` calls with no argument,
      * because it is what somebody means when they do not say.
      *
      * @return array<string, mixed>|null

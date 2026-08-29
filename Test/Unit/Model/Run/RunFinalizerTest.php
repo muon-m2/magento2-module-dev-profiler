@@ -17,7 +17,9 @@ use Magento\Store\Api\Data\StoreInterface;
 use Magento\Store\Model\StoreManagerInterface;
 use Muon\DevProfiler\Model\Run\RunContext;
 use Muon\DevProfiler\Model\Run\RunFinalizer;
+use Muon\DevProfiler\Model\Sql\ValueMasker;
 use Muon\DevProfiler\Model\Store\RunStore;
+use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\MockObject\Stub;
 use PHPUnit\Framework\TestCase;
@@ -135,7 +137,118 @@ class RunFinalizerTest extends TestCase
             $design,
             $this->createStub(FlyweightFactory::class),
             $this->createStub(LoggerInterface::class),
+            new ValueMasker(),
             $excludedActions
+        );
+    }
+
+    /**
+     * getRequestUri() returns the query string verbatim, and Magento puts single-use credentials in
+     * it: customer/account/createPassword carries `token` and Confirm carries `key`, either of which
+     * is enough to take over an account. Stored, they sit on disk for the next fifty requests and
+     * are printed by muon:profile:list.
+     */
+    #[AllowMockObjectsWithoutExpectations] // setUp()'s shared fixtures are unused here.
+    public function testCredentialsInTheQueryStringAreNotStored(): void
+    {
+        $request = $this->createStub(HttpRequest::class);
+        $request->method('getMethod')->willReturn('GET');
+        $request->method('isXmlHttpRequest')->willReturn(false);
+        $request->method('getServer')->willReturn(microtime(true));
+        $request->method('getFullActionName')->willReturn('customer_account_createpassword');
+        $request->method('getRequestUri')->willReturn(
+            '/en-us/customer/account/createPassword/?id=42&token=6f1d8ac09b2e4f7a&email=shopper%40example.com'
+        );
+
+        $written = null;
+        $store = $this->createMock(RunStore::class);
+        $store->expects(self::once())->method('write')->willReturnCallback(
+            static function (string $token, array $run) use (&$written): void {
+                $written = $run;
+            }
+        );
+
+        $this->finalizerWith($request, $store)->finalize($this->rawResponse(), RunFinalizer::KIND_PAGE);
+
+        self::assertIsArray($written);
+        self::assertIsArray($written['request'] ?? null);
+
+        $url = (string)($written['request']['url'] ?? '');
+
+        self::assertStringContainsString('/en-us/customer/account/createPassword/', $url, 'the path is the subject');
+        self::assertStringNotContainsString('6f1d8ac09b2e4f7a', $url, 'the reset token was stored');
+        self::assertStringNotContainsString('shopper%40example.com', $url);
+        self::assertStringNotContainsString('shopper@example.com', $url);
+        self::assertStringContainsString('id=42', $url, 'a numeric id is diagnostic and must survive');
+    }
+
+    #[AllowMockObjectsWithoutExpectations] // setUp()'s shared fixtures are unused here.
+    public function testAUrlWithNoQueryStringIsUntouched(): void
+    {
+        $request = $this->createStub(HttpRequest::class);
+        $request->method('getMethod')->willReturn('GET');
+        $request->method('isXmlHttpRequest')->willReturn(false);
+        $request->method('getServer')->willReturn(microtime(true));
+        $request->method('getFullActionName')->willReturn('cms_index_index');
+        $request->method('getRequestUri')->willReturn('/en-us/nb-home');
+
+        $written = null;
+        $store = $this->createMock(RunStore::class);
+        $store->expects(self::once())->method('write')->willReturnCallback(
+            static function (string $token, array $run) use (&$written): void {
+                $written = $run;
+            }
+        );
+
+        $this->finalizerWith($request, $store)->finalize($this->rawResponse(), RunFinalizer::KIND_PAGE);
+
+        self::assertIsArray($written);
+        self::assertIsArray($written['request'] ?? null);
+        self::assertSame('/en-us/nb-home', $written['request']['url'] ?? null);
+    }
+
+    /**
+     * A response the finalizer may tag, with no expectations of its own.
+     *
+     * @return HttpResponse
+     */
+    private function rawResponse(): HttpResponse
+    {
+        $response = $this->createStub(HttpResponse::class);
+        $response->method('getHttpResponseCode')->willReturn(200);
+
+        return $response;
+    }
+
+    /**
+     * @param HttpRequest $request
+     * @param RunStore $store
+     * @return RunFinalizer
+     */
+    private function finalizerWith(HttpRequest $request, RunStore $store): RunFinalizer
+    {
+        $store2 = $this->createStub(StoreInterface::class);
+        $store2->method('getCode')->willReturn('en_us');
+        $store2->method('getId')->willReturn(1);
+        $store2->method('getWebsiteId')->willReturn(1);
+
+        $storeManager = $this->createStub(StoreManagerInterface::class);
+        $storeManager->method('getStore')->willReturn($store2);
+
+        $theme = $this->createStub(ThemeInterface::class);
+        $theme->method('getThemePath')->willReturn('Muon/cosmic');
+        $design = $this->createStub(DesignInterface::class);
+        $design->method('getDesignTheme')->willReturn($theme);
+
+        return new RunFinalizer(
+            new RunContext(),
+            $store,
+            $request,
+            $storeManager,
+            $design,
+            $this->createStub(FlyweightFactory::class),
+            $this->createStub(LoggerInterface::class),
+            new ValueMasker()
         );
     }
 }

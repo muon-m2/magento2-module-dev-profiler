@@ -14,11 +14,13 @@ namespace Muon\DevProfiler\Model\Analysis;
  * Two presentation rules, extracted here so every read surface applies the same ones. They were
  * private to the console renderer until a second surface needed them, and a second copy would have
  * been a second answer: the board would have shown four identical `etc/view.xml` rows where
- * `make profile` shows one, and a reader comparing the two would have had no way to tell which was
+ * `bin/magento muon:profile:show` shows one, and a reader comparing the two would have had no way to tell which was
  * lying.
  *
  * Nothing here discards evidence. The stored run keeps every lookup; only the presentation is
  * collapsed, and the count comes with it.
+ *
+ * @api
  */
 class ResolutionSet
 {

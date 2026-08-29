@@ -4,6 +4,116 @@ All notable changes to `Muon_DevProfiler` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is
 [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-08-28
+
+Closes the Medium findings from the 2026-08-28 release-readiness audit.
+
+### Security
+
+- **The request URI is no longer stored with its query string intact.** `getRequestUri()` returns it
+  verbatim, and Magento puts single-use credentials there: `customer/account/createPassword` carries
+  `token`, `Confirm` carries `key`, and either is enough to take over an account. The path is kept
+  whole; the query is filtered through `ValueMasker`, so there is one definition of "sensitive"
+  rather than a second list that drifts from the first. Numeric ids survive — they are what
+  separates an N+1 from a duplicate.
+
+- **`ValueMasker` covers ordinary PII and two credential shapes it used to miss.** Added
+  `firstname`, `lastname`, `company`, `city`, `region`, `country`, `address`, `birth`, `gender`,
+  `coupon` and neighbours to the key list: a name is five letters that look like any other five, so
+  no shape rule can catch it and the key has to decide. The token shape now admits `:` and `.`, so a
+  Magento password hash (`hash:salt:version`) and a JWT are recognised; both previously failed the
+  character class on one punctuation mark.
+
+- **Template hints can no longer poison a shared cache.** `?__muon_hints=1` rewrites every block's
+  HTML, and the cookie was not part of any cache identity — so the first hinted response was stored
+  under the clean URL and served to every later visitor, red borders and server-side template paths
+  included. The active mode now goes into `Http\Context`, which feeds `getVaryString()` and the
+  `X-Magento-Vary` cookie the full-page cache hashes. The plugin also honours
+  `dev/restrict/allow_ips` via `Developer\Helper\Data::isDevAllowed()`, as core's own hints do — an
+  operator who restricted debugging to one address should not be worked around by a query parameter.
+
+### Fixed
+
+- **`Gate` no longer latches an answer borrowed from an emulated area.** `Widget\FilterEmulate`,
+  PageBuilder's `DesignLoader` and `Email\Filter` all call `emulateAreaCode('frontend', …)` and
+  restore afterwards. A yes derived from one was memoized, arming the collectors for the rest of an
+  admin request, a `bin/magento` command or a cron process — where `RunFinalizer` never fires, so
+  nothing was written, nothing freed, and the recorder grew to the end of the process.
+
+- **Static-asset runs no longer evict the page run they were captured beside.** A cold page fires
+  one `App\StaticResource` request per unmaterialised asset — routinely 150 to 400 — and each wrote
+  a run and pruned the ring, rotating the 50-entry ring several times over during a single page
+  load. Measured on a live install: 22 of 50 stored runs were static, carrying no queries. A static
+  run is now kept only when it resolved a `.less` or `.css` source, which is the one thing
+  `App\Http` cannot see and the reason the hook exists. Pass an empty `keepExtensions` to restore
+  the old behaviour.
+
+- **`LayoutVerdict` stopped re-parsing the merged layout on every profiled page.**
+  `Merge::asSimplexml()` caches nothing: each call re-implodes every merged fragment and re-parses
+  it, measured at 0.8ms for a 100KB layout and 8.7ms at 800KB. `generateXml()` has already built
+  that tree, so the plugin now reads it back through the public `getNode()`. The cost was being paid
+  inside the request whose `duration_ms` the profiler then reported — the tool was inflating the
+  number it exists to measure.
+
+### Added
+
+- **`Api\RunReaderInterface`, marked `@api`.** The read surface a companion module can bind to,
+  with a `di.xml` preference onto `RunStore`. `Muon_DevProfilerBoard` consumed six concrete classes
+  across ten files under a `^1.2` constraint with nothing marked `@api` behind it, so a legal minor
+  release here could have broken it. `CacheVerdict`, `QueryAnalyzer`, `ResolutionSet`,
+  `ShadowResolver` and `RunFinalizer` are now marked `@api` too.
+
+- **`ResetAfterRequestInterface` on all six stateful singletons** — `RunContext`, `Gate`,
+  `QueryLogger`, `FallbackRecorder`, `TemplateHints` and `ShadowResolver`. Core's own
+  `DB\Logger\LoggerProxy`, the class this module plugs, implements it for the same reason: in a
+  long-lived process one request's recording would otherwise be attributed to the next.
+
+- **`Test/Unit/Stub/generated.php`.** `DebugHintsFactory` has no source file — Magento generates it
+  into `generated/code` on demand — so a test that doubles it passes on a full install and errors in
+  CI with "Class or interface does not exist". The stub is declared only when the real class is
+  absent, so the tests run everywhere rather than being skipped in CI, which would put them straight
+  back into the category this release just took them out of.
+
+- **Tests for everything above, plus the three classes that had none**: `SqlListRenderer` (reached by
+  `--sql`, and previously never executed by any test), the three console commands, and
+  `FallbackRecorder`, whose seven-argument signature is a branch per optional argument.
+  175 tests, up from 119.
+
+### Changed
+
+- **Documentation uses `bin/magento`, not `make`.** The `make profile` targets are wrappers in the
+  monorepo this module is developed in; they do not exist in any Magento install, and this is now a
+  public package. That included a runtime string — `FallbackListRenderer` printed
+  `make profile-clear` as advice to the operator.
+
+- **`LayoutVerdict`'s two `around` plugins are now `after` plugins.** Neither modified arguments,
+  short-circuited, or caught anything from `$proceed()`; both called it as their first statement.
+  Because they sit on `Magento\Framework\View\Layout`, every other module's plugins on those two
+  methods were running inside a closure chain this module owned.
+
+- **`etc/di.xml`'s load-bearing invariant is stated correctly.** It claimed the SQL collector's
+  constructor graph was "plain, unplugged and ungenerated"; on a stock 2.4.9 it is not —
+  `App\State` is plugged by `Magento_NewRelicReporting`, and the plugin target resolves to
+  `LoggerProxy`, which lazily builds the also-plugged `Quiet`. The real invariant is that no
+  dependency may be constructed *for the first time* inside `___callPlugins()`, and it holds only
+  because bootstrap builds `App\State` first — incidental, not enforced.
+
+### Known trade-offs, accepted
+
+- **The `DB\LoggerInterface` plugin is global and unavoidable.** It fires on every statement in
+  every area because `LoggerInterface` resolves before any area exists, and no other module on a
+  stock install plugs it — so the interceptor exists because of this module. With the gate settled
+  the residual is roughly 3.6µs per statement, about 1.5ms on a 200-query page. Splitting the SQL
+  collector into a separately-disableable package was considered and not done; an install that
+  cannot accept the cost should disable the module rather than rely on developer mode, which gates
+  what is recorded and not what is dispatched. Now documented in the interception table, where it
+  was missing entirely.
+
+- **"Developer mode only" remains a runtime gate, not a wiring decision.** Magento has no
+  mode-scoped `di.xml`, so the plugins register unconditionally and the gate returns early. The
+  1.4.0 reordering makes that early return cheap; removing the dispatch itself would require the
+  package split above.
+
 ## [1.3.1] — 2026-08-28
 
 ### Fixed
@@ -82,7 +192,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
   They were private until a second surface needed them, and a second copy would have been a second
   answer: a web board rendering the raw classification showed four identical `etc/view.xml` rows
-  where `make profile` shows one, and reported 6 shadowed files where the CLI reported 3. Two tools
+  where `bin/magento muon:profile:show` shows one, and reported 6 shadowed files where the CLI reported 3. Two tools
   disagreeing about one piece of evidence is worse than having one tool.
 
 - **`RunStore::count()`.** How many runs the ring holds, counted without decoding any of them, so a
@@ -211,8 +321,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   setting. No route or controller.
 - Filesystem ring buffer under `var/muon/profiler/` (50 runs, `di.xml` argument). No database
   tables, no cron.
-- CLI: `muon:profile:show`, `muon:profile:list`, `muon:profile:clear`, plus `make profile`,
-  `make profile-list`, `make profile-clear`.
+- CLI: `muon:profile:show`, `muon:profile:list`, `muon:profile:clear`.
 - Capture on both entry points: `App\Http` for pages and `App\StaticResource` for assets that had
   to be compiled — the latter is where LESS is resolved.
 
