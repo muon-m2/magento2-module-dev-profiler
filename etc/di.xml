@@ -41,9 +41,28 @@
 
         The page-side capture is no longer a plugin here at all — it moved to a frontend-scoped
         observer on controller_front_send_response_before (etc/frontend/events.xml), for the same
-        underlying reason. Two plugins remain global: StaticResource below, safe uncompiled because
-        that entry point does not build the storefront plugin list, and DB\LoggerInterface, which
-        has its own note.
+        underlying reason. Two plugins remain global: StaticResource below and DB\LoggerInterface,
+        each with its own note.
+    -->
+
+    <!--
+        AROUND, NOT AFTER. Also load-bearing.
+
+        An earlier revision used afterLaunch, on the reasoning that this entry point does not build
+        the storefront plugin list. That is the wrong invariant. The hazard is any config-scope
+        change between ___callParent() and the listener lookup, and launch() performs one
+        unconditionally: setAreaCode() switches the scope, PluginList::_loadScopedData() replaces
+        $_inherited with the area table, and this primary-scope entry point has no row in it. The
+        after-listener lookup at Interceptor.php:144 then warns on the missing key, the warning is
+        promoted to an exception, and StaticResource::catchException() returns 404 text/plain — for
+        an asset publish() had already written to disk. Every cold static request 404s on its first
+        fetch and succeeds on its second, so the admin loads with its RequireJS stack stripped and
+        the menus inert, while the assets quietly repair themselves one request too late.
+
+        An around listener is resolved at Interceptor.php:133, before ___callParent() runs, so it
+        never sees the swapped table (as would a before listener, at :119 — it is the after lookup
+        alone that lands on the far side). Verified on cold assets: after = 404, around = 200.
+        StaticResourceWriterTest::testRegressionTheLaunchHookIsAroundNotAfter() holds the line.
     -->
     <type name="Magento\Framework\App\StaticResource">
         <plugin name="muon_devprofiler_static_resource_writer"

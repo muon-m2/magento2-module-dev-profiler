@@ -1,6 +1,6 @@
 # Muon_DevProfiler — Technical Reference
 
-Module: `Muon_DevProfiler` · Package `muon/module-dev-profiler` 1.5.0 · OSL-3.0
+Module: `Muon_DevProfiler` · Package `muon/module-dev-profiler` 1.5.1 · OSL-3.0
 Requires PHP `~8.3.0 || ~8.4.0 || ~8.5.0`, Magento 2.4.9.
 
 ## Architecture
@@ -55,8 +55,18 @@ graph TD
 | `View\Layout` | after | `Plugin\View\LayoutVerdict` | frontend |
 | `View\LayoutFactory` | after | `Plugin\View\LayoutOptOut` | frontend |
 | `View\TemplateEngineFactory` | after | `Plugin\View\TemplateHints` | frontend |
-| `App\StaticResource` | after | `Plugin\App\StaticResourceWriter` | **global** |
+| `App\StaticResource` | around | `Plugin\App\StaticResourceWriter` | **global** |
 | `DB\LoggerInterface` | before | `Plugin\Db\QueryLogger` | **global** |
+
+`App\StaticResource` is `around` and must stay that way. `launch()` calls `State::setAreaCode()`,
+changing the DI config scope mid-chain, so `PluginList::_loadScopedData()` replaces `$_inherited`
+with the area table — which has no row for this primary-scope entry point. The **after**-listener
+lookup (`Interceptor.php:144`) is the one that runs on the far side of that switch: it warns on the
+missing key, the warning becomes an exception, and `catchException()` returns `404 text/plain` for an
+asset already written to disk. `before` (`:119`) and `around` (`:133`) are resolved before
+`___callParent()` and never see the swapped table, so `after` is the only unsafe listener here.
+Fixed in 1.5.1; `testRegressionTheLaunchHookIsAroundNotAfter()` and
+`testRegressionNoPluginOnStaticResourceUsesAnAfterListener()` guard it.
 
 `DB\LoggerInterface` is the one that matters for cost, and it was missing from this table until
 1.4.0. It fires on every statement of every request in every area — adminhtml, REST, GraphQL, cron,

@@ -4,6 +4,38 @@ All notable changes to `Muon_DevProfiler` are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning is
 [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] — 2026-09-09
+
+### Fixed
+
+- **The static-asset hook no longer 404s the asset it just published.** `StaticResourceWriter` was
+  an `after` listener on `App\StaticResource::launch()`. `launch()` calls `State::setAreaCode()`,
+  which changes the DI config scope mid-chain; `PluginList::_loadScopedData()` then replaces
+  `$_inherited` with the area table, in which this primary-scope entry point has no row. The
+  after-listener lookup at `Interceptor.php:144` warned on the missing key, Magento promoted the
+  warning to an exception, and `StaticResource::catchException()` turned it into a
+  `404 text/plain` — for a file `publish()` had already written.
+
+  The effect was one 404 on the **first** request for every unmaterialised asset, and a 200 on the
+  second. Browsers refuse to execute a `text/plain` body, so a cold admin page lost most of its
+  RequireJS stack (`mage/backend/menu`, `mage/backend/form`, `mage/backend/validation`,
+  `Magento_Ui/js/core/app`, `Magento_Ui/js/core/renderer/layout`): 30 console errors on a dashboard
+  load, inert menus, and grids and forms that never rendered. Any static purge, `deployed_version`
+  bump or newly-enabled module brought it back.
+
+  The hook is now `aroundLaunch`, resolved at `Interceptor.php:133` before `___callParent()` runs,
+  so it never sees the swapped table. Nothing changes about what is recorded. Two guards hold the
+  line: `testRegressionTheLaunchHookIsAroundNotAfter()` pins this class, and
+  `testRegressionNoPluginOnStaticResourceUsesAnAfterListener()` reads `etc/di.xml` and pins every
+  plugin registered on that type, including ones added later.
+
+  `before` (`Interceptor.php:119`) and `around` (`:133`) listeners are resolved ahead of
+  `___callParent()`; only the `after` lookup (`:144`) lands on the far side of the switch.
+
+  The `di.xml` note claiming this plugin was "safe uncompiled because that entry point does not
+  build the storefront plugin list" was wrong and has been replaced: the invariant is that no
+  config-scope change may occur between `___callParent()` and the listener lookup.
+
 ## [1.5.0] — 2026-08-28
 
 Closes the Low findings from the 2026-08-28 release-readiness audit.
