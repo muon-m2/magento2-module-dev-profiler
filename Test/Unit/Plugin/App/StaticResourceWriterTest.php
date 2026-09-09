@@ -16,6 +16,7 @@ use Muon\DevProfiler\Model\Run\RunFinalizer;
 use Muon\DevProfiler\Plugin\App\StaticResourceWriter;
 use PHPUnit\Framework\Attributes\AllowMockObjectsWithoutExpectations;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 
 /**
  * @see StaticResourceWriter
@@ -65,7 +66,7 @@ class StaticResourceWriterTest extends TestCase
             ['type' => 'file', 'file' => 'css/source/_extend.less', 'resolved' => 'app/design/x.less'],
         ], $finalizer);
 
-        $writer->afterLaunch($this->createStub(StaticResource::class), $this->response());
+        $writer->aroundLaunch($this->createStub(StaticResource::class), fn (): ResponseInterface => $this->response());
     }
 
     /**
@@ -81,7 +82,7 @@ class StaticResourceWriterTest extends TestCase
             ['type' => 'file', 'file' => 'Magento_Theme::js/theme.js', 'resolved' => 'pub/static/x.js'],
         ], $finalizer);
 
-        $writer->afterLaunch($this->createStub(StaticResource::class), $this->response());
+        $writer->aroundLaunch($this->createStub(StaticResource::class), fn (): ResponseInterface => $this->response());
     }
 
     public function testNothingIsStoredWhenTheGateIsClosed(): void
@@ -93,7 +94,7 @@ class StaticResourceWriterTest extends TestCase
             ['type' => 'file', 'file' => 'css/source/_extend.less'],
         ], $finalizer);
 
-        $writer->afterLaunch($this->createStub(StaticResource::class), $this->response());
+        $writer->aroundLaunch($this->createStub(StaticResource::class), fn (): ResponseInterface => $this->response());
     }
 
     /**
@@ -109,7 +110,7 @@ class StaticResourceWriterTest extends TestCase
 
         $writer = new StaticResourceWriter($gate, $finalizer, new RunContext(), []);
 
-        $writer->afterLaunch($this->createStub(StaticResource::class), $this->response());
+        $writer->aroundLaunch($this->createStub(StaticResource::class), fn (): ResponseInterface => $this->response());
     }
 
     public function testTheResponseIsAlwaysReturnedUnchanged(): void
@@ -120,6 +121,66 @@ class StaticResourceWriterTest extends TestCase
         $response = $this->response();
         $writer = $this->writer(true, [], $finalizer);
 
-        self::assertSame($response, $writer->afterLaunch($this->createStub(StaticResource::class), $response));
+        self::assertSame(
+            $response,
+            $writer->aroundLaunch($this->createStub(StaticResource::class), fn (): ResponseInterface => $response)
+        );
+    }
+
+    /**
+     * App\StaticResource::launch() calls State::setAreaCode(), which changes the DI config scope
+     * mid-chain; PluginList::_loadScopedData() then replaces $_inherited wholesale, and this
+     * primary-scope entry point has no row in the area-scope table. The after-listener lookup at
+     * Interceptor.php:144 happens on the far side of that switch, so PluginList::getPlugin() warns
+     * on a missing key, the warning is promoted to an exception, and
+     * StaticResource::catchException() turns it into a 404 text/plain — for the asset it had
+     * already published. Every cold static request 404s on first fetch, which strips the admin of
+     * its RequireJS stack and leaves the menus unbound.
+     *
+     * `around` (Interceptor.php:133) is resolved before ___callParent() runs and never sees the
+     * swapped table. This hook must therefore stay `around`.
+     */
+    public function testRegressionTheLaunchHookIsAroundNotAfter(): void
+    {
+        $plugin = new ReflectionClass(StaticResourceWriter::class);
+
+        self::assertTrue(
+            $plugin->hasMethod('aroundLaunch'),
+            'launch() must be intercepted with an around listener, resolved before the scope switch.'
+        );
+
+        self::assertFalse(
+            $plugin->hasMethod('afterLaunch'),
+            'afterLaunch() is resolved after StaticResource::launch() swaps the DI scope, which 404s the asset.'
+        );
+    }
+
+    /**
+     * The sibling guard. The test above pins this class; this one pins the declaration, because
+     * di.xml is where the choice is actually made and where the wrong rationale lived. Any plugin
+     * registered on App\StaticResource — this one or a later addition — must intercept launch()
+     * with `around` or `before`, never `after`.
+     */
+    public function testRegressionNoPluginOnStaticResourceUsesAnAfterListener(): void
+    {
+        $di = simplexml_load_file(__DIR__ . '/../../../../etc/di.xml');
+        self::assertNotFalse($di, 'etc/di.xml must be readable and well-formed.');
+
+        $plugins = $di->xpath('//type[@name="Magento\\Framework\\App\\StaticResource"]/plugin') ?: [];
+        self::assertNotEmpty($plugins, 'The StaticResource plugin declaration has moved or been removed.');
+
+        foreach ($plugins as $plugin) {
+            $class = (string)$plugin['type'];
+            self::assertTrue(class_exists($class), sprintf('Plugin class %s does not exist.', $class));
+
+            self::assertFalse(
+                (new ReflectionClass($class))->hasMethod('afterLaunch'),
+                sprintf(
+                    '%s declares afterLaunch(); launch() swaps the DI scope before the after-listener '
+                    . 'lookup, so the asset is served as a 404. Use aroundLaunch().',
+                    $class
+                )
+            );
+        }
     }
 }

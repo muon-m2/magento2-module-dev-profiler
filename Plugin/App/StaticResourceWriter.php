@@ -25,6 +25,15 @@ use Muon\DevProfiler\Model\Run\RunFinalizer;
  * Only requests that reach PHP are seen. Once a file is materialised, nginx serves it directly and
  * there is nothing to record — which is correct, because at that point no fallback resolution
  * happens either.
+ *
+ * This hook MUST stay `around`. launch() calls State::setAreaCode(), which changes the DI config
+ * scope mid-chain; PluginList::_loadScopedData() then replaces $_inherited wholesale, and this
+ * primary-scope entry point has no row in the area-scope table. An `after` listener is fetched on
+ * the far side of that switch (Interceptor.php:144), so PluginList::getPlugin() warns on the missing
+ * key, the warning is promoted to an exception, and StaticResource::catchException() returns 404
+ * text/plain for the asset it had just published. `around` (Interceptor.php:133) is resolved before
+ * ___callParent() runs and never sees the swapped table. Guarded by
+ * StaticResourceWriterTest::testRegressionTheLaunchHookIsAroundNotAfter().
  */
 class StaticResourceWriter
 {
@@ -44,12 +53,14 @@ class StaticResourceWriter
 
     /**
      * @param \Magento\Framework\App\StaticResource $subject
-     * @param \Magento\Framework\App\ResponseInterface $result
+     * @param callable $proceed
      * @return \Magento\Framework\App\ResponseInterface
      * @SuppressWarnings(PHPMD.UnusedFormalParameter) `$subject` is fixed by the plugin signature.
      */
-    public function afterLaunch(StaticResource $subject, ResponseInterface $result): ResponseInterface
+    public function aroundLaunch(StaticResource $subject, callable $proceed): ResponseInterface
     {
+        $result = $proceed();
+
         if ($this->gate->isProfiled() && $this->worthKeeping()) {
             $this->finalizer->finalize($result, RunFinalizer::KIND_STATIC);
         }
