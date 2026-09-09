@@ -75,6 +75,21 @@
         reporting <code>hit</code> because layout never generated would be true of the mechanism and
         meaningless to the reader.
     </p>
+    <h3>If you are on 1.5.0 or earlier, upgrade</h3>
+    <p>
+        Capturing those static requests meant hooking <code>App\StaticResource::launch()</code>, and
+        through 1.5.0 that hook was an <code>after</code> plugin. <code>launch()</code> switches the DI
+        config scope midway through its own plugin chain, so the after-listener lookup read a plugin
+        table that no longer had a row for it — and Magento answered <strong>404</strong> for the asset
+        it had just written to disk. Every uncompiled asset failed its first request and succeeded on
+        its second, which in developer mode strips a cold admin page of most of its JavaScript.
+    </p>
+    <p>
+        Fixed in <strong>1.5.1</strong> by moving the hook to <code>around</code>, which is resolved
+        before the scope changes. Nothing about what is recorded changed. A profiler that breaks the
+        application it is measuring is worse than no profiler, so this is worth the upgrade even if you
+        never read a static run.
+    </p>
 </section>
 
 <section id="install">
